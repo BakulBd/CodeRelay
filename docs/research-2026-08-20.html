@@ -1,0 +1,1125 @@
+<title>Relay Reliability Brief</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+:root{
+  --ground:#F6F7F9; --panel:#FFFFFF; --panel-2:#EFF1F5;
+  --ink:#12161D; --ink-2:#3D4757; --ink-3:#6B7686;
+  --rule:#DCE0E8; --rule-2:#C6CCD8;
+  --accent:#3538CD; --accent-soft:#E7E8FB;
+  --ok:#067647; --ok-soft:#DCFAE6;
+  --warn:#B54708; --warn-soft:#FEF0C7;
+  --bad:#B42318; --bad-soft:#FEE4E2;
+  --shadow:0 1px 2px rgba(18,22,29,.06),0 8px 24px -12px rgba(18,22,29,.12);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1219; --panel:#161B24; --panel-2:#1D2430;
+    --ink:#E8ECF3; --ink-2:#AFBACA; --ink-3:#7E8A9C;
+    --rule:#28303C; --rule-2:#374050;
+    --accent:#9BA0FF; --accent-soft:#242853;
+    --ok:#5CE0A0; --ok-soft:#0C3627;
+    --warn:#F5B544; --warn-soft:#3A2A0C;
+    --bad:#FF9B8F; --bad-soft:#401915;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1219; --panel:#161B24; --panel-2:#1D2430;
+  --ink:#E8ECF3; --ink-2:#AFBACA; --ink-3:#7E8A9C;
+  --rule:#28303C; --rule-2:#374050;
+  --accent:#9BA0FF; --accent-soft:#242853;
+  --ok:#5CE0A0; --ok-soft:#0C3627;
+  --warn:#F5B544; --warn-soft:#3A2A0C;
+  --bad:#FF9B8F; --bad-soft:#401915;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:56px;align-items:start}
+@media (max-width:960px){.layout{grid-template-columns:minmax(0,1fr);gap:0}}
+
+/* masthead */
+header.mast{border-bottom:1px solid var(--rule);background:var(--panel);}
+.mast-in{padding:56px 0 40px}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 18px}
+h1{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;font-size:clamp(30px,4.4vw,46px);line-height:1.12;letter-spacing:-.02em;margin:0 0 16px;text-wrap:balance;max-width:20ch}
+.standfirst{font-size:18.5px;line-height:1.58;color:var(--ink-2);max-width:66ch;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:30px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
+.meta b{color:var(--ink-2);font-weight:500}
+
+/* nav rail */
+nav.rail{position:sticky;top:0;max-height:100vh;overflow-y:auto;padding:44px 0 40px;font-size:13px;line-height:1.45}
+@media (max-width:960px){nav.rail{position:static;max-height:none;border-bottom:1px solid var(--rule);padding-bottom:24px}}
+nav.rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+@media (max-width:960px){nav.rail ol{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 18px}}
+nav.rail a{display:flex;gap:9px;text-decoration:none;color:var(--ink-3);padding:3px 0;border-radius:3px}
+nav.rail a:hover{color:var(--accent)}
+nav.rail a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+nav.rail .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--rule-2);flex:none;width:1.6em;text-align:right;padding-top:1px}
+.rail-h{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+
+main{padding:44px 0 96px;min-width:0}
+section{margin:0 0 60px;scroll-margin-top:20px}
+h2{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;font-size:26px;line-height:1.22;letter-spacing:-.012em;margin:0 0 6px;text-wrap:balance;display:flex;gap:14px;align-items:baseline}
+h2 .n{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:500;color:var(--accent);flex:none}
+h3{font-family:"IBM Plex Sans",sans-serif;font-weight:600;font-size:15.5px;letter-spacing:.005em;margin:32px 0 10px;color:var(--ink)}
+h4{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 8px}
+p{margin:0 0 14px;max-width:72ch}
+ul,ol.body{margin:0 0 16px;padding-left:20px;max-width:72ch}
+li{margin:0 0 7px}
+a{color:var(--accent);text-underline-offset:2px}
+code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.87em;background:var(--panel-2);padding:.12em .38em;border-radius:3px;border:1px solid var(--rule)}
+strong{font-weight:600}
+.lede{font-size:17px;color:var(--ink-2);max-width:70ch}
+hr{border:0;border-top:1px solid var(--rule);margin:0 0 34px}
+
+/* tables */
+.scroll{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--panel);box-shadow:var(--shadow);margin:0 0 18px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;line-height:1.45}
+th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);font-weight:500;background:var(--panel-2);position:sticky;top:0;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td.num,td.mono,th.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:12.5px}
+table.matrix{min-width:1100px}
+table.compare{min-width:900px}
+td.k{font-weight:500;color:var(--ink);white-space:nowrap}
+
+/* pills */
+.pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.06em;font-weight:500;padding:2px 7px;border-radius:3px;white-space:nowrap;border:1px solid transparent}
+.g{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 26%,transparent)}
+.y{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.r{background:var(--bad-soft);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 28%,transparent)}
+.a{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 26%,transparent)}
+.n0{background:var(--panel-2);color:var(--ink-3);border-color:var(--rule)}
+
+/* callouts */
+.note{border-left:2px solid var(--accent);background:var(--panel);padding:14px 18px;margin:0 0 18px;border-radius:0 5px 5px 0;box-shadow:var(--shadow);max-width:74ch}
+.note.warnb{border-left-color:var(--warn)}
+.note.badb{border-left-color:var(--bad)}
+.note.okb{border-left-color:var(--ok)}
+.note p:last-child{margin-bottom:0}
+.note .lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:6px}
+
+.fact{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ok);font-weight:500}
+.infer{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);font-weight:500}
+
+pre{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;overflow-x:auto;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.55;margin:0 0 18px;box-shadow:var(--shadow)}
+pre code{background:none;border:0;padding:0;font-size:inherit}
+
+.scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin:0 0 20px}
+.score{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;box-shadow:var(--shadow)}
+.score .lab{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:7px}
+.score .val{font-family:"IBM Plex Serif",Georgia,serif;font-size:25px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
+.score .sub{font-size:12px;color:var(--ink-3);margin-top:4px;line-height:1.4}
+
+footer{border-top:1px solid var(--rule);background:var(--panel);padding:32px 0 44px;font-size:13px;color:var(--ink-3)}
+footer p{max-width:74ch}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<header class="mast"><div class="wrap"><div class="mast-in">
+<p class="eyebrow">Research brief · CodeRelay · 20 Aug 2026</p>
+<h1>Models can fail. The task shouldn&rsquo;t.</h1>
+<p class="standfirst">A competitive, provider-API and feasibility review of cross-provider task continuity for VS&nbsp;Code &mdash; measured against the ~3.4k lines and 381 tests already in this repository, not against a blank page.</p>
+<div class="meta">
+<span><b>Scope</b> 33 sections, 56 edge cases</span>
+<span><b>Method</b> live web research + code audit</span>
+<span><b>Verdict</b> 1 of 13 claims is novel</span>
+<span><b>Build</b> restored, 379/381 green</span>
+</div>
+</div></div></header>
+
+<div class="wrap"><div class="layout">
+<nav class="rail" aria-label="Sections">
+<p class="rail-h">Contents</p>
+<ol>
+<li><a href="#s1"><span class="n">1</span>Executive summary</a></li>
+<li><a href="#s2"><span class="n">2</span>Competitive landscape</a></li>
+<li><a href="#s3"><span class="n">3</span>Feature comparison</a></li>
+<li><a href="#s4"><span class="n">4</span>Claude Code analysis</a></li>
+<li><a href="#s5"><span class="n">5</span>OpenAI analysis</a></li>
+<li><a href="#s6"><span class="n">6</span>Gemini analysis</a></li>
+<li><a href="#s7"><span class="n">7</span>NVIDIA &amp; compatible</a></li>
+<li><a href="#s8"><span class="n">8</span>Existing fallback</a></li>
+<li><a href="#s9"><span class="n">9</span>Existing recovery</a></li>
+<li><a href="#s10"><span class="n">10</span>Novelty opportunities</a></li>
+<li><a href="#s11"><span class="n">11</span>Proposed architecture</a></li>
+<li><a href="#s12"><span class="n">12</span>Failure recovery</a></li>
+<li><a href="#s13"><span class="n">13</span>Internet failure</a></li>
+<li><a href="#s14"><span class="n">14</span>Streaming recovery</a></li>
+<li><a href="#s15"><span class="n">15</span>Cross-model continuity</a></li>
+<li><a href="#s16"><span class="n">16</span>API-key management</a></li>
+<li><a href="#s17"><span class="n">17</span>Model routing</a></li>
+<li><a href="#s18"><span class="n">18</span>Security</a></li>
+<li><a href="#s19"><span class="n">19</span>VS Code architecture</a></li>
+<li><a href="#s20"><span class="n">20</span>Local-first</a></li>
+<li><a href="#s21"><span class="n">21</span>Benchmark system</a></li>
+<li><a href="#s22"><span class="n">22</span>Failure injection</a></li>
+<li><a href="#s23"><span class="n">23</span>56 edge cases</a></li>
+<li><a href="#s24"><span class="n">24</span>MVP</a></li>
+<li><a href="#s25"><span class="n">25</span>Roadmap</a></li>
+<li><a href="#s26"><span class="n">26</span>Repository structure</a></li>
+<li><a href="#s27"><span class="n">27</span>Implementation plan</a></li>
+<li><a href="#s28"><span class="n">28</span>Technical risks</a></li>
+<li><a href="#s29"><span class="n">29</span>Legal risks</a></li>
+<li><a href="#s30"><span class="n">30</span>Novelty score</a></li>
+<li><a href="#s31"><span class="n">31</span>Feasibility score</a></li>
+<li><a href="#s32"><span class="n">32</span>Portfolio potential</a></li>
+<li><a href="#s33"><span class="n">33</span>Recommendation</a></li>
+</ol>
+</nav>
+<main>
+<section id="s1"><h2><span class="n">01</span>Executive summary</h2><hr>
+<p class="lede">The brief asked for research before implementation. The implementation already exists &mdash; and it is better than the market. What the research changes is narrower and more useful than a design: it kills four novelty claims, validates one, and surfaces one API capability the current design does not exploit.</p>
+
+<h3>What the research actually settles</h3>
+<ol class="body">
+<li><strong>Multi-provider routing, multi-key rotation, cooldown, health-based routing and context-window fallback are commodity.</strong> LiteLLM ships all of it; OpenRouter ships two layers of it server-side; Kilo Code ships it inside a VS&nbsp;Code agent as &ldquo;Virtual Quota Fallback&rdquo;. Sections 4, 12, 13 and 14 of your brief describe a solved problem. Do not position on them.</li>
+<li><strong>Git-based checkpointing is commodity and slightly discredited.</strong> Cline and Roo Code both ship shadow-git checkpoints. Their open issue trackers are full of nested-repo failures, large-repo timeouts and corruption reports. Your implementation avoids those specific failure modes by construction, which is a <em>quality</em> claim, not a novelty claim.</li>
+<li><strong>Cross-provider continuity with side-effect safety is genuinely unoccupied.</strong> Every failover system found operates at the request layer: it retries a request somewhere else. None reasons about whether the interrupted request already changed the workspace. That gap is where the whole product lives.</li>
+<li><strong>The thesis has independent academic support.</strong> AgentChaos (ASE&nbsp;2026) injected 65 fault configurations into agent systems and found pass@1 dropping by up to 50&nbsp;points, concluding that <em>&ldquo;robustness depends on system implementation rather than model capability.&rdquo;</em> That is your product statement, published, with numbers.</li>
+<li><strong>One capability is being left on the table.</strong> OpenAI&rsquo;s Responses API supports genuine stream <em>resumption</em> &mdash; <code>background:&nbsp;true</code> plus <code>stream:&nbsp;true</code>, reconnecting with <code>starting_after=&lt;sequence_number&gt;</code>. CodeRelay currently only regenerates truncated turns. Regeneration is the correct universal fallback; resumption is strictly better where offered, and the adapter interface cannot currently express it.</li>
+</ol>
+
+<h3>State of the code, as found today</h3>
+<div class="note badb"><span class="lbl">Build was broken on arrival</span>
+<p>The literal characters <code>conm\</code> had been typed at the top of <code>src/providers/openai.ts</code>, so <code>tsc</code> failed with <code>TS1127: Invalid character</code> and nothing compiled. Removed. The suite now runs: <strong>379 of 381 passing</strong>.</p></div>
+
+<p>The two remaining failures are both <strong>stale tests, not implementation defects</strong>:</p>
+<ul>
+<li><code>test/policy/route.test.ts</code> &mdash; &ldquo;a key refused on one model is still offered on another&rdquo; builds a fixture whose own attempt history records <code>(k2,&nbsp;SONNET)</code> as already 403-refused, then asserts the router picks <code>(k2,&nbsp;SONNET)</code>. The router correctly refuses to walk back into a known-failing pairing and escalates. The fixture contradicts the test&rsquo;s stated intent; the implementation is right.</li>
+<li><code>test/agent/loop.test.ts</code> &mdash; asserts the handoff note matches <code>/cut off before it completed/</code>, but <code>renderHandoff</code> emits &ldquo;interrupted mid-response &hellip; incomplete and was never finished&rdquo;. Wording drift; the behaviour under test (partial text arrives labelled as a hint, never as an assistant message) is correct.</li>
+</ul>
+
+<div class="note warnb"><span class="lbl">The audit document overstates completion</span>
+<p><code>docs/audit-2026-08-20.md</code> marks every P1&ndash;P3 finding &ldquo;Resolved&rdquo;. Spot-checking against the tree, the resolutions are real &mdash; <code>sign()</code>, <code>FORBIDDEN</code>, <code>appendEventual</code>, the attempt/turn split all exist as described. But it also claims the suite is &ldquo;377 tests, all passing&rdquo;, and the tree as handed over did not compile at all. Treat the audit&rsquo;s prose as accurate and its status claims as unverified.</p></div>
+
+<h3>The one-line recommendation</h3>
+<p>Stop researching and ship. The largest gap is not knowledge, it is that <code>extension.ts</code> cannot start a task &mdash; every component the MVP needs exists and is tested, and nothing in the editor can reach them. Positioning should be <strong>&ldquo;Models can fail. Your task shouldn&rsquo;t.&rdquo;</strong> over the alternative, for reasons given in &sect;33.</p>
+</section>
+
+<section id="s2"><h2><span class="n">02</span>Current competitive landscape</h2><hr>
+<p>Grouped by what they actually are, because the brief&rsquo;s list mixes three different categories of product that fail in different ways.</p>
+
+<h4>Category A &mdash; Agent harnesses (CLI)</h4>
+<p><strong>Claude Code.</strong> Sessions persist as append-only JSONL under <code>~/.claude/projects/&lt;project&gt;/&lt;session-id&gt;.jsonl</code>; <code>--continue</code> and <code>--resume</code> deserialise the full history back into context. Hooks fire around the tool lifecycle (<code>PreToolUse</code>, <code>PostToolUse</code>, <code>UserPromptSubmit</code>, <code>SessionStart</code>, <code>Stop</code>, plus <code>PreCompact</code>/<code>PostCompact</code>). Subagents get isolated context windows, their own tool permissions and their own model. <span class="fact">fact</span> Single-vendor by construction: there is no provider failover because there is no second provider. The transcript format is explicitly internal and may change between releases &mdash; <span class="infer">inference</span> do not build a parser against it.</p>
+<p><strong>OpenAI Codex CLI, Gemini CLI.</strong> Same shape, same single-vendor constraint.</p>
+<p><strong>Aider, Goose, OpenHands, SWE-agent.</strong> Multi-provider by configuration, not by failover. OpenHands users reach for external routing layers to get circuit-breaking; Goose&rsquo;s documented &ldquo;automatic fallback&rdquo; is about <em>secret storage</em> falling back to file-based when the keyring is unavailable, not about models. <span class="fact">fact</span></p>
+
+<h4>Category B &mdash; VS Code / IDE agents</h4>
+<p><strong>Cline &amp; Roo Code.</strong> The closest prior art on state. Cline maintains a shadow Git repository separate from your real history and commits after each tool use, capturing untracked files too. Roo Code forked from it. Both ship checkpoint restore. <span class="fact">fact</span> Both have well-documented reliability problems with it: checkpoints disabled by nested git repos, 15-second initialisation waits on large repositories, and at least one report of task history being destroyed while stuck on &ldquo;Still initializing checkpoint&hellip;&rdquo;. <span class="fact">fact</span></p>
+<p><strong>Kilo Code.</strong> The single most important competitor for your brief. Its <em>Virtual Quota Fallback</em> provider is a synthetic profile wrapping an ordered list of real profiles; when profile 1 exhausts its manually-entered quota, it moves to profile 2, then 3. <span class="fact">fact</span> This is &sect;4 and &sect;14 of your brief, shipped, in a VS&nbsp;Code agent. The limits are that quotas are hand-entered rather than observed, and the switch is quota/rate-limit driven rather than error-classified &mdash; and, critically, it carries no reasoning about interrupted side effects.</p>
+<p><strong>Continue.</strong> Broad provider support; falls back to system-message tools for models without native tool calling, though that is opt-in rather than automatic. <span class="fact">fact</span></p>
+<p><strong>GitHub Copilot.</strong> Now absorbs a large part of the multi-provider pitch: BYOK shipped for VS&nbsp;Code, letting Business/Enterprise users bring keys for Anthropic, Gemini, OpenAI, OpenRouter, Azure, Ollama and Foundry Local. <span class="fact">fact</span> Restrictions worth knowing: BYOK covers chat and utility tasks but <em>not</em> code completions, and is key-based auth only &mdash; no Entra ID or managed identities.</p>
+<p><strong>Cursor / Windsurf.</strong> Per-task model swapping across Claude/GPT/Gemini, agent checkpoints and reverts in both. Recovery in Cursor is better separated (inspect terminal, reject edits, restore checkpoint, or fall back to Git). Closed source, so nothing here is reusable, but they set the UX bar for &sect;17&rsquo;s timeline.</p>
+
+<h4>Category C &mdash; Gateways and routers</h4>
+<p><strong>LiteLLM.</strong> The reference implementation of everything in &sect;4/&sect;12/&sect;13/&sect;14. Fallbacks at three levels (call, Router, proxy); typed fallback strategies for general failure, <em>context-window</em> errors and <em>content-policy</em> errors; cooldown after <code>allowed_fails</code>; background health-check loops that evict a deployment from the pool <em>before</em> a user request lands on it; multiple keys per deployment. <span class="fact">fact</span></p>
+<p><strong>OpenRouter.</strong> Two distinct failover layers, and the distinction is worth stealing: provider-layer failover is <em>automatic and on by default</em> (<code>allow_fallbacks: true</code>) retrying another provider of the same model on 5xx or rate-limit, with failed requests unbilled; model-layer fallback via the <code>models</code> array is <em>opt-in</em> and additionally covers context-length validation errors and moderation refusals. <span class="fact">fact</span></p>
+<p><strong>Portkey, Cloudflare AI Gateway, Flock.</strong> Same category. Flock advertises multi-key rotation, 429 failover and vendor fallback, explicitly compatible with Aider, Continue, Goose and OpenHands &mdash; <span class="infer">inference</span> which is the clearest evidence that the agent tools do not consider failover their job.</p>
+
+<div class="note"><span class="lbl">The structural gap</span>
+<p>Category C knows about requests but not about workspaces. Category A and B know about workspaces but treat a provider failure as a dead end the user resolves by clicking retry. Nothing in the survey sits in both. That is the entire opening, and it is a real one.</p></div>
+</section>
+<section id="s3"><h2><span class="n">03</span>Feature-by-feature comparison</h2><hr>
+<p>Legend: <span class="pill g">yes</span> shipped &middot; <span class="pill y">part</span> partial or opt-in &middot; <span class="pill r">no</span> absent &middot; <span class="pill n0">n/a</span> not applicable to the category.</p>
+<div class="scroll"><table class="compare">
+<thead><tr>
+<th>Capability</th><th>Claude Code</th><th>Cline / Roo</th><th>Kilo</th><th>Continue</th><th>Copilot</th><th>Cursor</th><th>LiteLLM</th><th>OpenRouter</th><th class="mono">CodeRelay</th>
+</tr></thead>
+<tbody>
+<tr><td class="k">Multi-provider models</td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill y">BYOK</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Multiple keys per provider</td><td><span class="pill r">no</span></td><td><span class="pill y">profiles</span></td><td><span class="pill g">yes</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Secret storage in OS keychain</td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Automatic model fallback</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">auto</span></td><td><span class="pill g">yes</span></td><td><span class="pill y">opt-in</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Error-class-aware routing</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">quota</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td><td><span class="pill y">part</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Capability-gated failover</td><td><span class="pill n0">n/a</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">part</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">ctx only</span></td><td><span class="pill y">ctx only</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Per-key health / cooldown</td><td><span class="pill n0">n/a</span></td><td><span class="pill r">no</span></td><td><span class="pill y">quota</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill y">part</span></td></tr>
+<tr><td class="k">Session persistence</td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Durable step ledger (WAL)</td><td><span class="pill y">log</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Tool-call idempotency keys</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Ambiguous-effect resolution</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Cross-provider mid-task handoff</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">blind</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">blind</span></td><td><span class="pill y">blind</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Partial-stream carry-forward</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">True stream resumption</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">gap</span></td></tr>
+<tr><td class="k">Git checkpoint / rollback</td><td><span class="pill y">manual</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill r">no</span></td><td><span class="pill y">part</span></td><td><span class="pill g">yes</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Non-destructive checkpoints</td><td><span class="pill n0">n/a</span></td><td><span class="pill y">shadow</span></td><td><span class="pill y">shadow</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill y">part</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">File-state fingerprinting</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill g">yes</span></td></tr>
+<tr><td class="k">Offline detection &amp; queue</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill r">gap</span></td></tr>
+<tr><td class="k">MCP</td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill r">gap</span></td></tr>
+<tr><td class="k">Subagents / parallel agents</td><td><span class="pill g">yes</span></td><td><span class="pill y">part</span></td><td><span class="pill y">part</span></td><td><span class="pill r">no</span></td><td><span class="pill y">part</span></td><td><span class="pill g">yes</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill n0">n/a</span></td><td><span class="pill r">no</span></td></tr>
+<tr><td class="k">Cost tracking</td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill y">part</span></td><td><span class="pill y">part</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill g">yes</span></td><td><span class="pill r">gap</span></td></tr>
+<tr><td class="k">Failure-injection test suite</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill y">part</span></td><td><span class="pill r">no</span></td><td><span class="pill y">unit</span></td></tr>
+<tr><td class="k">Provenance-tagged reasoning</td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill r">no</span></td><td><span class="pill g">yes</span></td></tr>
+</tbody></table></div>
+
+<h3>Reading the table</h3>
+<p>The bottom third is where CodeRelay is alone, and the top third is where it is one of many. That is a healthy shape for a differentiated product and a dangerous one for marketing: the features that are easiest to <em>describe</em> are the ones everybody has.</p>
+<p>Three <span class="pill r">gap</span> cells matter. <strong>Offline detection</strong> and <strong>cost tracking</strong> are table-stakes that competitors ship and you do not. <strong>True stream resumption</strong> is the opposite &mdash; nobody ships it, and one provider now makes it possible (&sect;14).</p>
+<p>The <span class="pill y">blind</span> cells on cross-provider handoff are the important nuance: LiteLLM, OpenRouter and Kilo <em>do</em> send the next request to a different model. They just send it without knowing what the previous attempt did to the disk. Calling that &ldquo;failover&rdquo; is accurate at the request layer and misleading at the task layer.</p>
+</section>
+<section id="s4"><h2><span class="n">04</span>Claude Code deep analysis</h2><hr>
+<p>The brief says not to assume Claude Code is an API wrapper. It is not. It is a harness whose value is concentrated in the parts that are not the API call.</p>
+
+<h3>Layer separation</h3>
+<div class="scroll"><table>
+<thead><tr><th>Layer</th><th>Capability</th><th>Replicable in a VS&nbsp;Code extension?</th></tr></thead>
+<tbody>
+<tr><td class="k">API-level</td><td>Messages API, tool use, streaming events, prompt caching, token counting</td><td><span class="pill g">GREEN</span> Public and documented. Already implemented in <code>src/providers/anthropic.ts</code>.</td></tr>
+<tr><td class="k">API-level</td><td>In-stream <code>overloaded_error</code> arriving as an SSE <code>error</code> event <em>after</em> HTTP 200</td><td><span class="pill g">GREEN</span> Already handled &mdash; <code>anthropic.ts:79,116&ndash;118</code> throws <code>ProviderStreamError</code>, which classifies as <code>STREAM</code>.</td></tr>
+<tr><td class="k">CLI-level</td><td>JSONL session transcripts, <code>--continue</code>, <code>--resume</code>, branching</td><td><span class="pill g">GREEN</span> The mechanism is ordinary. Your ledger is a strictly stronger version of it (see below).</td></tr>
+<tr><td class="k">CLI-level</td><td>Hook lifecycle: <code>PreToolUse</code>, <code>PostToolUse</code>, <code>UserPromptSubmit</code>, <code>SessionStart</code>, <code>Stop</code>, <code>PreCompact</code>/<code>PostCompact</code></td><td><span class="pill y">YELLOW</span> Reproducible as an extension API, but it is a whole product surface. Post-MVP.</td></tr>
+<tr><td class="k">CLI-level</td><td>Subagents with isolated context, own tools, own model</td><td><span class="pill y">YELLOW</span> Architecturally straightforward once the loop is re-entrant. Explicitly out of MVP scope.</td></tr>
+<tr><td class="k">CLI-level</td><td>Permission modes (default / auto-accept edits / plan)</td><td><span class="pill g">GREEN</span> Pure UX. Worth copying &mdash; it is the best-tested consent model in the category.</td></tr>
+<tr><td class="k">Proprietary</td><td>System prompt, harness tuning, tool descriptions, compaction heuristics</td><td><span class="pill r">RED</span> Not published. Do not attempt to extract or reproduce.</td></tr>
+<tr><td class="k">Proprietary</td><td>Subscription (Pro/Max) authentication</td><td><span class="pill r">RED</span> Using subscription credentials from a third-party client is outside the intended use of those plans. Use API keys only.</td></tr>
+<tr><td class="k">Undocumented</td><td>Internal JSONL record types and relationships</td><td><span class="pill r">RED</span> Documented as internal and subject to change between releases. Never parse.</td></tr>
+</tbody></table></div>
+
+<h3>Where CodeRelay is already ahead</h3>
+<p>Claude Code resumes by <strong>deserialising the full transcript back into context</strong>. That is sound within one vendor and unsound across vendors, for the three reasons <code>policy/handoff.ts</code> already states in its header comment: partial assistant output is not an assistant message, reasoning is not portable, and tool-call ids are provider-scoped. The research confirms all three &mdash; see &sect;6 on Gemini <code>thoughtSignature</code>.</p>
+<p>More importantly, a transcript records <em>what was said</em>. It does not record whether a tool&rsquo;s side effect landed. Claude Code&rsquo;s resume path cannot distinguish &ldquo;the edit was written&rdquo; from &ldquo;the edit was announced and then the process died&rdquo;. Your <code>TOOL_EXECUTING</code>-before-effect write-ahead ordering can. <span class="infer">inference</span> That is the single sharpest technical claim in the project.</p>
+
+<div class="note"><span class="lbl">Do not replicate</span>
+<p>Claude Code&rsquo;s value is the harness, and the harness is tuned against one model family. Cloning its surface would produce a worse Claude Code. The defensible position is orthogonal: <em>be the layer that keeps a task alive when any harness&rsquo;s provider fails.</em></p></div>
+</section>
+
+<section id="s5"><h2><span class="n">05</span>OpenAI analysis</h2><hr>
+<h3>The finding that should change the design</h3>
+<div class="note okb"><span class="lbl">Genuine stream resumption exists</span>
+<p>Setting <code>background: true</code> together with <code>stream: true</code> on the Responses API streams events immediately <em>while retaining the ability to reconnect</em>. Every event carries a <code>sequence_number</code>. If the connection dies, you resume with <code>GET /v1/responses/{id}?stream=true&amp;starting_after=42</code> &mdash; picking up after the last event you actually received. Cancellation is idempotent: repeat calls just return the final Response object. <span class="fact">fact</span></p></div>
+
+<p>This is a materially better answer to &sect;7 of the brief than regeneration, and CodeRelay cannot currently express it. Constraints found:</p>
+<ul>
+<li><strong>Time-boxed.</strong> Developers report <code>This response can no longer be streamed because it is more than 5 minutes old</code>; Zero-Data-Retention projects keep response data on disk for roughly 10 minutes to enable async polling. <span class="infer">inference</span> Treat the resume window as ~5 minutes, not guaranteed.</li>
+<li><strong>Model-scoped.</strong> Background mode is documented against current GPT-5.x models, not universally.</li>
+<li><strong>Not portable.</strong> You can resume <em>OpenAI&rsquo;s</em> stream. You can never resume it on Anthropic. Resumption is a per-provider optimisation layered under an unchanged universal fallback.</li>
+<li><strong>Polling states</strong> are <code>queued</code> / <code>in_progress</code> until terminal.</li>
+</ul>
+
+<h4>Required interface change</h4>
+<pre><code>// core/types.ts — add to ModelCapabilities
+readonly resumableStream: boolean;
+
+// providers/adapter.ts — new optional capability, mirroring CompletionDecoder
+export interface StreamResumer {
+  /** Re-attach to an in-flight generation after `afterSequence`. */
+  resume(handle: StreamHandle, afterSequence: number): BuiltRequest;
+  /** Provider-side cancel, so an abandoned background run is not billed. */
+  cancel(handle: StreamHandle): BuiltRequest;
+}
+export interface StreamHandle {
+  readonly providerRunId: string;   // OpenAI response id
+  readonly lastSequence: number;    // last sequence_number observed
+  readonly startedAt: number;       // for the ~5 min staleness check
+}</code></pre>
+<p>The ledger needs one new entry type, <code>STREAM_HANDLE</code>, appended as soon as the response id is known. <code>planRecovery</code> then gains a branch <em>above</em> <code>REGENERATE_TURN</code>: if a handle exists, is fresh, and its adapter implements <code>StreamResumer</code>, resume; otherwise fall through to today&rsquo;s behaviour unchanged. <span class="infer">inference</span> Estimated 1&ndash;2 days including tests.</p>
+
+<h3>Other OpenAI-specific facts that bite</h3>
+<ul>
+<li><strong>Two APIs, not one.</strong> Responses and Chat Completions differ in shape. Your <code>openai.ts</code> targets Chat Completions, which is right for MVP because it is what every compatible endpoint speaks &mdash; but background mode is a Responses-API feature, so resumption needs a second request builder, not just a flag.</li>
+<li><strong><code>max_tokens</code> vs <code>max_completion_tokens</code>.</strong> Your <code>maxTokensField</code> setting already handles this, and the description in <code>package.json</code> correctly notes that guessing wrong is a 400 on every attempt that failover cannot route around. This is a good example of the project&rsquo;s general instinct being right.</li>
+</ul>
+</section>
+
+<section id="s6"><h2><span class="n">06</span>Gemini analysis</h2><hr>
+<p>Gemini is the provider that most tests a normalisation layer, and the research turned up three concrete divergences.</p>
+<div class="scroll"><table>
+<thead><tr><th>Divergence</th><th>Detail</th><th>Status in this repo</th></tr></thead>
+<tbody>
+<tr><td class="k">SSE is opt-in</td><td><code>:streamGenerateContent</code> returns a single JSON document unless <code>?alt=sse</code> is set. Getting this wrong yields a 200 with a non-SSE body.</td><td><span class="pill g">handled</span> &mdash; and the classifier&rsquo;s content-type branch would catch the mistake as <code>STREAM</code> rather than silently hanging.</td></tr>
+<tr><td class="k">Whole-response chunks</td><td>Each SSE event is a complete <code>GenerateContentResponse</code>, not a delta. Text lives at <code>candidates[0].content.parts[0].text</code>; the stream ends on <code>finishReason: "STOP"</code>.</td><td><span class="pill g">handled</span> in <code>gemini.ts</code>.</td></tr>
+<tr><td class="k">Missing tool-call ids</td><td>Only Gemini 3+ returns <code>FunctionCall.id</code>. Older models return none, so a translation layer must synthesise stable ids.</td><td><span class="pill y">partial</span> &mdash; <code>gemini.ts:166</code> synthesises <code>call_${this.calls}</code>. Correct within a stream; see risk below.</td></tr>
+<tr><td class="k"><code>thoughtSignature</code></td><td>Gemini 2.5+/3+ return opaque encrypted signatures on thinking parts that <em>must be returned exactly as-is</em> in later turns or the model rejects the context.</td><td><span class="pill r">gap</span> &mdash; must be round-tripped within a Gemini conversation, and must be dropped entirely on cross-provider handoff.</td></tr>
+<tr><td class="k">Schema dialect</td><td>Function parameters use an OpenAPI 3.0 subset with <em>uppercase</em> type names (<code>"STRING"</code>, <code>"NUMBER"</code>, <code>"OBJECT"</code>).</td><td><span class="pill y">check</span> &mdash; tool schemas must be translated per-adapter, not shared verbatim.</td></tr>
+</tbody></table></div>
+
+<div class="note warnb"><span class="lbl">Synthetic id stability</span>
+<p><code>call_${this.calls}</code> is per-decoder, and decoders are created fresh per request. Two turns in the same task will both emit <code>call_0</code>. Within a single turn that is fine; across turns, if a <code>functionResponse</code> is ever matched back by id, it will collide. Recommend folding <code>stepId</code> into the synthesised id so uniqueness is task-scoped, matching how <code>SideEffectKey</code> already works.</p></div>
+
+<p><strong>Why this section vindicates <code>handoff.ts</code>.</strong> <code>thoughtSignature</code> is the concrete proof of the &ldquo;reasoning is not portable&rdquo; argument: it is an <em>encrypted, validated</em> token. Forwarding it to OpenAI is meaningless; forwarding OpenAI reasoning summaries to Gemini is equally meaningless. Reconstruction rather than replay is not a stylistic preference, it is forced by the wire formats. <span class="fact">fact</span></p>
+</section>
+
+<section id="s7"><h2><span class="n">07</span>NVIDIA and OpenAI-compatible providers</h2><hr>
+<p><strong>NVIDIA.</strong> Hosted inference at <code>https://integrate.api.nvidia.com/v1</code>, OpenAI-compatible, backed by vLLM, exposing chat completions, completions, responses and model discovery. Keys from <code>build.nvidia.com</code> are prefixed <code>nvapi-</code>. Tool calling and JSON mode follow OpenAI configuration because the surface is OpenAI-compatible. Self-hosted NIM containers expose the same API. <span class="fact">fact</span></p>
+<p>Consequence: NVIDIA needs <strong>no adapter</strong>. It is a settings row against <code>kind: "openai"</code>. Your <code>package.json</code> already documents exactly this, and the design decision to make <code>kind</code> mean <em>wire protocol, not vendor</em> is the correct one &mdash; it is what converts six roadmap items into zero code.</p>
+
+<div class="scroll"><table>
+<thead><tr><th>Provider</th><th>Adapter needed</th><th>Blocker</th><th>Class</th></tr></thead>
+<tbody>
+<tr><td class="k">OpenRouter</td><td>None &mdash; config row</td><td>Wants <code>HTTP-Referer</code>/<code>X-Title</code>; already supported via <code>headers</code>.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">NVIDIA NIM (hosted + local)</td><td>None &mdash; config row</td><td>&mdash;</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">vLLM / Ollama / LM Studio</td><td>None &mdash; config row</td><td><code>auth: "none"</code> path already exists.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">Azure OpenAI</td><td>Signer only</td><td><code>api-key</code> header + <code>api-version</code> in query string; deployment name replaces model id. <code>sign()</code> receives the URL, so this is expressible today.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">AWS Bedrock</td><td>Full adapter</td><td>SigV4 signs a hash of the <em>body</em>; Converse/InvokeModel wire format differs. <code>sign()</code> receiving the whole request is what makes it possible at all.</td><td><span class="pill y">YELLOW</span></td></tr>
+<tr><td class="k">GitHub Copilot</td><td>Second adapter <em>kind</em></td><td><code>vscode.lm</code> is not HTTP+SSE. See &sect;19 and &sect;29.</td><td><span class="pill r">RED</span></td></tr>
+</tbody></table></div>
+
+<p>Five of the six &ldquo;missing adapters&rdquo; in the prior audit are configuration or a signer function. Only Bedrock is real work, and only Copilot is a design change. <span class="infer">inference</span> The adapter backlog is roughly one week, not one quarter.</p>
+</section>
+<section id="s8"><h2><span class="n">08</span>Existing fallback systems</h2><hr>
+<p>Everything below is shipped, documented prior art. Read this section as a list of things you must <em>not</em> claim to have invented.</p>
+<div class="scroll"><table>
+<thead><tr><th>System</th><th>What it does</th><th>Trigger set</th><th>Limitation for our thesis</th></tr></thead>
+<tbody>
+<tr><td class="k">OpenRouter &mdash; provider layer</td><td>Retries another provider serving the same model. On by default (<code>allow_fallbacks</code>). Failed requests unbilled.</td><td>5xx, rate limit</td><td>Same model only. Stateless. No workspace awareness.</td></tr>
+<tr><td class="k">OpenRouter &mdash; model layer</td><td><code>models: [...]</code> array tried in priority order. Opt-in.</td><td>Downtime, rate limit, context-length validation, moderation refusal</td><td>Sends the same payload to a different model with no restatement of task state.</td></tr>
+<tr><td class="k">LiteLLM Router</td><td>Fallbacks at call/Router/proxy level; cooldown after <code>allowed_fails</code>; background health checks evict deployments pre-emptively.</td><td>General, <em>context window</em>, <em>content policy</em> &mdash; typed separately</td><td>Request-scoped. A tool that half-ran is invisible to it.</td></tr>
+<tr><td class="k">LiteLLM pre-call checks</td><td><code>enable_pre_call_checks: true</code> validates a request fits the window <em>before</em> sending.</td><td>Proactive</td><td>Worth copying. CodeRelay currently detects <code>CONTEXT</code> only reactively from a provider error.</td></tr>
+<tr><td class="k">Kilo Code Virtual Quota Fallback</td><td>Ordered chain of configuration profiles; exhausting profile 1&rsquo;s quota moves to 2, then 3.</td><td>Manually entered quota limits, rate limits</td><td>Quotas hand-entered, not observed. No error classification. No side-effect reasoning.</td></tr>
+<tr><td class="k">Flock / Portkey / Cloudflare AI Gateway</td><td>Multi-key rotation, 429 failover, vendor fallback, as a gateway in front of any client.</td><td>Rate limit, vendor outage</td><td>By design knows nothing about the agent using it.</td></tr>
+</tbody></table></div>
+<div class="note badb"><span class="lbl">Claims you must retire</span>
+<p>&ldquo;Multi-provider&rdquo;, &ldquo;automatic fallback&rdquo;, &ldquo;multiple API keys&rdquo;, &ldquo;key rotation&rdquo;, &ldquo;cooldown&rdquo;, &ldquo;health-based routing&rdquo;, &ldquo;quota-aware routing&rdquo; and &ldquo;context-window fallback&rdquo; are all shipped by at least two systems above. Sections 4, 12, 13 and 14 of the brief are re-implementation, chosen because a gateway dependency is unacceptable in a local-first extension &mdash; which is a fine reason, and not a differentiator.</p></div>
+</section>
+
+<section id="s9"><h2><span class="n">09</span>Existing recovery systems</h2><hr>
+<p>Recovery &mdash; as opposed to fallback &mdash; is much thinner ground.</p>
+<h4>Agent-side</h4>
+<ul>
+<li><strong>Cline / Roo shadow git.</strong> Commits workspace state to a separate repository after each tool use, including untracked files. This is genuine state recovery. Its documented weaknesses are operational: nested repos disable it, large repos time out (now bounded at a 15-second wait), and corruption has destroyed task history. <span class="fact">fact</span></li>
+<li><strong>Cursor / Windsurf checkpoints.</strong> Restore points plus revert. Cursor separates inspect / reject / restore / fall-back-to-git more cleanly.</li>
+<li><strong>Claude Code <code>--resume</code>.</strong> Full transcript restoration within one vendor.</li>
+</ul>
+<h4>Durable-execution literature</h4>
+<p>The general problem is solved and named outside this domain: checkpoint before the step, attach a stable idempotency key to each logical operation, deduplicate on it, prefer upserts and conditional writes over blind writes, and check current state before acting. The canonical framing of the hard case matches CodeRelay&rsquo;s exactly &mdash; <em>the checkpoint lands after the step, so a worker that dies mid-step leaves the runtime unsure whether the side effect fired</em>. <span class="fact">fact</span></p>
+<p>CodeRelay&rsquo;s answer is to move the durable marker <em>before</em> the effect (<code>TOOL_EXECUTING</code> is fsync&rsquo;d before the tool runs) and then resolve the resulting ambiguity from workspace evidence rather than from assumption. <span class="infer">inference</span> This is a correct application of a known pattern to a domain where nobody has applied it.</p>
+<div class="note okb"><span class="lbl">The honest novelty statement</span>
+<p>&ldquo;Durable execution with idempotency keys&rdquo; is textbook distributed systems. &ldquo;A coding agent that applies it to file edits and shell commands, and can therefore switch providers mid-task without re-running side effects&rdquo; is, on this survey, unoccupied.</p></div>
+</section>
+
+<section id="s10"><h2><span class="n">10</span>Novelty opportunities</h2><hr>
+<p>The brief listed thirteen candidate differentiators and asked for evidence. Verdicts below. <strong>Novelty</strong>: <span class="pill r">none</span> shipped elsewhere &middot; <span class="pill y">low/med</span> exists in weaker form &middot; <span class="pill g">high</span> nothing comparable found.</p>
+<div class="scroll"><table class="matrix">
+<thead><tr><th>Claim</th><th>Existing implementation</th><th>Their limitation</th><th>Our improvement</th><th>Novelty</th><th>Difficulty</th></tr></thead>
+<tbody>
+<tr><td class="k">Cross-provider task continuity</td><td>Kilo virtual provider; LiteLLM/OpenRouter fallback</td><td>Switch the request, not the task. No restatement of established facts.</td><td>Reconstructed handoff packet with observed/inferred provenance</td><td><span class="pill g">high</span></td><td>Done</td></tr>
+<tr><td class="k">Provider-independent tool execution</td><td>Continue, Cline (internal tool sets)</td><td>Tools are normalised; <em>execution state</em> is not portable across a switch.</td><td>Tool protocol + <code>SideEffectKey</code> that survives the switch</td><td><span class="pill y">med</span></td><td>Done</td></tr>
+<tr><td class="k">Checkpoint-aware model switching</td><td>None found</td><td>Checkpoints and model choice are unrelated subsystems everywhere.</td><td>Checkpoint id recorded in the ledger and referenced by the handoff</td><td><span class="pill g">high</span></td><td>Low</td></tr>
+<tr><td class="k">Partial-stream continuation</td><td>None in agents; OpenAI <code>starting_after</code> at API level</td><td>Agents discard partial output entirely.</td><td>Carry partial text as a labelled hint; resume natively where offered</td><td><span class="pill g">high</span></td><td>Med</td></tr>
+<tr><td class="k">Network-aware agent recovery</td><td>None found in agents</td><td>Agents surface &ldquo;API request failed&rdquo; and stop.</td><td>Distinguish offline / gateway / provider-down; preserve and resume</td><td><span class="pill g">high</span></td><td>Med</td></tr>
+<tr><td class="k">API-key health routing</td><td>LiteLLM, Flock, Portkey</td><td>Gateway-side; requires infrastructure.</td><td>Same behaviour, local-first, zero infra</td><td><span class="pill r">none</span></td><td>Done</td></tr>
+<tr><td class="k">Capability-aware failover</td><td>LiteLLM (context window only)</td><td>One dimension. No tool-calling or vision gate.</td><td>Full capability gate; declared not guessed</td><td><span class="pill y">low</span></td><td>Done</td></tr>
+<tr><td class="k">Verification-aware recovery</td><td>None found</td><td>&mdash;</td><td>Pre/post fingerprints resolve the ambiguous window by evidence</td><td><span class="pill g">high</span></td><td>Done</td></tr>
+<tr><td class="k">Task-based model selection</td><td>Cursor Auto; OpenRouter Auto Router; RouteLLM</td><td>Opaque; optimises cost, not task fit.</td><td>Explainable, user-overridable</td><td><span class="pill r">none</span></td><td>Med</td></tr>
+<tr><td class="k">Persistent cross-provider ledger</td><td>Claude Code JSONL (single vendor)</td><td>Records dialogue, not effect state; vendor-scoped; format internal.</td><td>Provider-neutral, effect-centric, WAL-ordered</td><td><span class="pill g">high</span></td><td>Done</td></tr>
+<tr><td class="k">Failure-injection benchmark suite</td><td>AgentChaos (ASE 2026), ReliabilityBench</td><td>Research harnesses, not shipped tooling; evaluate degradation, not recovery.</td><td>Ship it inside the product; measure <em>recovery</em>, not just degradation</td><td><span class="pill y">med</span></td><td>Med</td></tr>
+<tr><td class="k">Provider reliability scoring</td><td>LiteLLM health checks; OpenRouter uptime</td><td>Aggregate/server-side.</td><td>Per-user, per-key, local</td><td><span class="pill r">none</span></td><td>Low</td></tr>
+<tr><td class="k">Recovery-aware orchestration</td><td>None found end-to-end</td><td>&mdash;</td><td>The composition of the six <span class="pill g">high</span> rows above</td><td><span class="pill g">high</span></td><td>Med</td></tr>
+</tbody></table></div>
+<p><strong>Score: six high, one medium-high, three medium/low, three none.</strong> The concentration is not accidental &mdash; every <span class="pill g">high</span> row depends on the ledger. That is the moat, and it is already built.</p>
+<div class="note"><span class="lbl">Sharpening the claim</span>
+<p>&ldquo;Failure-injection benchmark&rdquo; moves from <span class="pill y">med</span> toward <span class="pill g">high</span> if you measure something the papers do not. AgentChaos measures how far pass@1 <em>falls</em> under faults. Nobody publishes <em>recovery rate under identical injected faults, with and without continuity</em>. That is a novel metric, it is cheap to produce once the harness exists, and it is exactly the chart that wins a competition submission.</p></div>
+</section>
+<section id="s11"><h2><span class="n">11</span>Proposed architecture</h2><hr>
+<p>This is the architecture as built, with the three research-driven additions marked <span class="pill a">new</span>.</p>
+<pre><code>UI Layer ................ webview timeline, quick-picks, status bar
+     |
+AgentLoop ............... turn loop; owns nothing provider-specific
+     |
+     +-- ContextManager .......... transcript assembly, compaction   [thin]
+     +-- ModelRouter (route.ts) .. pure fn: failure -> next attempt
+     +-- RecoveryEngine .......... classify.ts + replay.ts
+     +-- ContinuityLedger ........ append-only JSONL, fsync-ordered
+     +-- ToolRunner .............. WAL ordering, SideEffectKey
+     |        +-- FileSafety ..... pre/post fingerprints
+     |        +-- GitCheckpoint .. private index, unreachable refs
+     +-- CredentialManager ....... SecretStorage, cooldown, serialised
+     +-- HealthMonitor ........... latency/success per key+model    [new]
+     +-- NetworkMonitor .......... offline vs gateway vs provider   [new]
+     +-- CostTracker ............. token+USD per attempt            [new]
+     |
+ProviderRegistry
+     +-- AnthropicAdapter    (Messages, in-stream error events)
+     +-- OpenAIAdapter       (Chat Completions; + Responses for resume) [new]
+     +-- GeminiAdapter       (alt=sse, whole-response chunks)
+     +-- AzureSigner         (composition over OpenAIAdapter)
+     +-- BedrockAdapter      (SigV4 over full request)
+     +-- VscodeLmAdapter     (second adapter *kind* - not HTTP+SSE)
+     |
+Transport ............... fetch + SSE parse, decoupled from decode</code></pre>
+
+<h3>The two contracts that make it work</h3>
+<p><strong>1. Decoding is separated from transport.</strong> A <code>StreamDecoder</code> turns SSE events into <code>NormalizedEvent</code>s and never sees a socket, so every provider&rsquo;s wire format &mdash; <em>including its truncation behaviour</em> &mdash; is testable with a string. This is why 381 tests run with no network and no extension host, and it is the reason the project can credibly claim reliability at all.</p>
+<p><strong>2. <code>sign(request, secret)</code> receives the whole request.</strong> A <code>(providerId, secret) =&gt; headers</code> signature cannot express Azure (<code>api-version</code> in the query string), Gemini (key as query parameter) or Bedrock (SigV4 over a body hash). Giving the signer the URL, headers and body makes all three expressible and keeps key material inside <code>src/providers/</code>.</p>
+
+<h3>Capability normalisation</h3>
+<p>The brief&rsquo;s <code>Provider &rarr; Credentials &rarr; Endpoint &rarr; Model &rarr; Capabilities</code> tree is implemented, with one deliberate inversion worth defending: <strong>capabilities are declared by the user, not guessed by the extension.</strong> The reasoning in <code>package.json</code> is correct &mdash; a capability table shipped inside an extension goes stale and becomes &ldquo;a confident lie about a context window&rdquo;, and a wrong <code>toolCalling</code> guess either sends tool definitions to a model that cannot use them or silently hides a model from the router.</p>
+<p><span class="infer">inference</span> The cost is onboarding friction, and it is real. Mitigation for Phase&nbsp;2: ship an optional, versioned, clearly-dated capability catalogue as a <em>seed</em> for the settings UI, which the user confirms and can override. Seeded-then-owned, never inferred at runtime.</p>
+</section>
+
+<section id="s12"><h2><span class="n">12</span>Failure recovery architecture</h2><hr>
+<p>The brief asked for a classification engine rather than blanket retry. That is <code>src/recovery/classify.ts</code>, and its ordering is load-bearing: the most consequential signals are tested first so a 401 can never be mistaken for something transient.</p>
+<div class="scroll"><table>
+<thead><tr><th>Class</th><th>Trigger</th><th>Request retryable</th><th>Rotate key</th><th>Router action</th></tr></thead>
+<tbody>
+<tr><td class="k">TLS_UNTRUSTED</td><td>Cert chain codes (expired, self-signed, unverifiable leaf)</td><td>no</td><td>no</td><td>ESCALATE with the actionable CA/proxy message</td></tr>
+<tr><td class="k">AUTH</td><td>401 only</td><td>with a different key</td><td><strong>yes</strong> &mdash; disables</td><td>SWITCH_CREDENTIAL</td></tr>
+<tr><td class="k">FORBIDDEN</td><td>403</td><td>no</td><td>no</td><td>SWITCH_MODEL on the same key; pairing banned, not key</td></tr>
+<tr><td class="k">STREAM</td><td>Non-JSON/SSE content-type on a &lt;400 response; early stream end; unparseable chunk</td><td>yes</td><td>no</td><td>Backoff, then transient path</td></tr>
+<tr><td class="k">RETRYABLE</td><td>408, 429, 500, 502, 503, 504, 529</td><td>yes</td><td>on 429 only</td><td>Backoff; spread load across keys on throttle</td></tr>
+<tr><td class="k">CONTEXT</td><td>413 or a message matching the limit patterns</td><td>no</td><td>no</td><td>COMPACT_CONTEXT, then larger window</td></tr>
+<tr><td class="k">CONFIG</td><td>Remaining 4xx</td><td>no</td><td>no</td><td>SWITCH_MODEL (inferred) or ESCALATE</td></tr>
+<tr><td class="k">NETWORK</td><td>ECONNRESET/REFUSED, ENOTFOUND, EAI_AGAIN, ETIMEDOUT, undici timeouts, EPROTO</td><td>yes</td><td>no</td><td>Backoff; see &sect;13</td></tr>
+<tr><td class="k">UNKNOWN</td><td>Everything else</td><td><strong>no</strong></td><td>no</td><td>Never retried on the same model &mdash; an error we cannot explain is one whose retry safety we cannot vouch for</td></tr>
+<tr><td class="k">TOOL / FILESYSTEM</td><td>Effect execution</td><td colspan="3">Excluded from <code>RequestErrorClass</code> by construction. Resolved from the ledger by <code>planRecovery</code>; routing one is a compile error.</td></tr>
+</tbody></table></div>
+
+<h4>Three judgements worth keeping</h4>
+<ul>
+<li><strong>409 and 425 are deliberately not retryable.</strong> A conflict recurs on an identical retry; <code>Too Early</code> only arises from TLS early data this transport never sends.</li>
+<li><strong>The HTML-instead-of-JSON check only fires below 400.</strong> A 5xx carrying an HTML error page is the provider failing, not a captive portal, and saying &ldquo;captive portal&rdquo; there sends the user chasing the wrong problem.</li>
+<li><strong>Attempt budget wraps the decision rather than preceding it.</strong> <code>withinAttemptBudget(input, limits, decide(...))</code> lets an <code>ESCALATE</code> pass through untouched on the last attempt, so a <code>TLS_UNTRUSTED</code> failure keeps its actionable message instead of degrading to a generic give-up.</li>
+</ul>
+<div class="note warnb"><span class="lbl">Recommended addition</span>
+<p>Add a <code>CONTENT_POLICY</code> class. Both OpenRouter and LiteLLM treat moderation refusals as a <em>distinct</em> fallback trigger, and they are right: a refusal is not transient, not a config error, and not a context problem &mdash; it is a signal to try a differently-aligned model. Today it would land in <code>CONFIG</code> or <code>UNKNOWN</code> and end the task.</p></div>
+</section>
+
+<section id="s13"><h2><span class="n">13</span>Internet failure architecture</h2><hr>
+<p>The brief enumerated twelve scenarios. The governing rule &mdash; <em>the extension must not blindly resend</em> &mdash; is already enforced structurally: a resend is only ever authorised by <code>planRecovery</code> reading the durable ledger, never by the network layer noticing a socket came back.</p>
+<div class="scroll"><table class="matrix">
+<thead><tr><th>Scenario</th><th>Detection</th><th>Behaviour</th><th>Resend safe?</th></tr></thead>
+<tbody>
+<tr><td class="k">1. Offline before request</td><td>Pre-flight probe fails; no bytes sent</td><td>Queue the turn; show &ldquo;Connection lost &mdash; preserving task state&rdquo;</td><td>Yes &mdash; provider never saw it</td></tr>
+<tr><td class="k">2. Offline during request, pre-response</td><td>ECONNRESET/ETIMEDOUT with zero tokens</td><td><code>NETWORK</code>; backoff</td><td>Yes &mdash; no tool could have run</td></tr>
+<tr><td class="k">3. Offline mid-stream</td><td><code>streamEndedEarly</code> with <code>hadStreamedTokens</code></td><td><code>STREAM</code>; ledger already holds <code>STREAM_PROGRESS</code></td><td><strong>Only via <code>planRecovery</code></strong> &mdash; a tool call may be in flight</td></tr>
+<tr><td class="k">4. Returns in 5s</td><td>Probe succeeds</td><td>Resume from plan; no user prompt</td><td>Per plan</td></tr>
+<tr><td class="k">5. Returns in 5min</td><td>Probe succeeds</td><td>Re-validate provider health before resuming; OpenAI stream handle likely stale (&sect;14)</td><td>Per plan</td></tr>
+<tr><td class="k">6. Never returns</td><td>Probe keeps failing</td><td>Ledger is durable; task resumable next session. Offer local model if configured</td><td>n/a</td></tr>
+<tr><td class="k">7. Provider up, gateway down</td><td>DNS resolves, TCP connects, 502/504 from an intermediary</td><td><code>RETRYABLE</code>, then provider switch &mdash; not an offline state</td><td>Yes</td></tr>
+<tr><td class="k">8. HTTP 200, malformed body</td><td>Decoder throws <code>ProviderStreamError</code></td><td><code>STREAM</code></td><td>Yes if no tool call completed</td></tr>
+<tr><td class="k">9. Proxy interception</td><td>Content-type is HTML on a &lt;400 response</td><td><code>STREAM</code> with the captive-portal message</td><td>Yes</td></tr>
+<tr><td class="k">10. DNS change</td><td>ENOTFOUND / EAI_AGAIN</td><td><code>NETWORK</code></td><td>Yes</td></tr>
+<tr><td class="k">11. VPN reconnect</td><td>ECONNRESET, or TLS trust codes if the VPN MITMs</td><td><code>NETWORK</code>, or <code>TLS_UNTRUSTED</code> escalation</td><td>Yes</td></tr>
+<tr><td class="k">12. Wake from sleep</td><td>Sockets dead; wall-clock jump</td><td>Treat as process interruption: re-run <code>planRecovery</code>, do not resume blind</td><td><strong>Only via <code>planRecovery</code></strong></td></tr>
+</tbody></table></div>
+<h4>The missing component</h4>
+<p><code>NetworkMonitor</code> does not exist yet, and the prior audit names it correctly: nothing distinguishes &ldquo;no network&rdquo; from &ldquo;provider down&rdquo;. The distinction matters because they have opposite correct responses &mdash; provider-down should fail over immediately, offline should <em>not</em> burn the attempt budget failing over to five providers that are all equally unreachable.</p>
+<div class="note"><span class="lbl">Design</span>
+<p>Cheap and deterministic: on <code>NETWORK</code>, probe a small set of configured provider origins concurrently with a short timeout. All fail &rarr; offline: freeze the attempt budget, park the task, poll with backoff. Some succeed &rarr; provider-specific: proceed with normal failover. Never probe a third-party &ldquo;are we online&rdquo; endpoint &mdash; that is an unnecessary network call to a party the user did not consent to. <span class="infer">inference</span> ~1 day.</p></div>
+</section>
+<section id="s14"><h2><span class="n">14</span>Streaming recovery architecture</h2><hr>
+<p>The brief calls this critical. It is, and it is the part the codebase handles best.</p>
+<h3>The primitives already in place</h3>
+<ul>
+<li><strong>An unterminated SSE event is never dispatched.</strong> Parsing is separated from decoding, so a half-arrived event cannot be acted on.</li>
+<li><strong>An incomplete tool call is discarded, not emitted.</strong> Both Anthropic and OpenAI stream tool arguments as JSON fragments; decoders buffer and emit only on the provider&rsquo;s explicit end-of-call signal. <code>finish()</code> reports <code>incomplete: true</code> rather than guessing.</li>
+<li><strong><code>truncated</code> is a distinct <code>StopReason</code> from <code>length</code>.</strong> <code>length</code> is a clean stop at the output cap; <code>truncated</code> means the transport died and we do not know what came next. Any unrecognised stop string &mdash; including <code>null</code>, <code>content_filter</code>, <code>refusal</code>, <code>pause_turn</code> &mdash; normalises to <code>truncated</code>, because guessing <code>stop</code> would tell recovery a turn finished when it did not.</li>
+</ul>
+
+<h3>Answering the brief&rsquo;s eight questions</h3>
+<div class="scroll"><table>
+<thead><tr><th>Question</th><th>Resolved by</th></tr></thead>
+<tbody>
+<tr><td class="k">Was the response complete?</td><td><code>StopReason</code> &mdash; <code>truncated</code> vs anything else.</td></tr>
+<tr><td class="k">Was a tool call issued?</td><td><code>TOOL_REQUESTED</code> in the ledger. Absent &rArr; no complete intent existed.</td></tr>
+<tr><td class="k">Was the tool executed?</td><td><code>TOOL_EXECUTING</code> is fsync&rsquo;d <em>before</em> the effect runs, so its presence is exactly &ldquo;may have run&rdquo; and its absence rules it out.</td></tr>
+<tr><td class="k">Did the provider receive the request?</td><td>Unknowable in general &mdash; and correctly treated as irrelevant. What matters is whether <em>our</em> workspace changed.</td></tr>
+<tr><td class="k">Could retry duplicate an effect?</td><td><code>SideEffectKey</code> = hash(tool + normalised args + <code>stepId</code>), with <code>stepId</code> stable across attempts of one turn.</td></tr>
+<tr><td class="k">Is the response resumable?</td><td>Today: no. With &sect;5&rsquo;s change: yes on OpenAI, within ~5 minutes.</td></tr>
+<tr><td class="k">Continue from partial?</td><td>Never as an assistant message. Carried in <code>truncatedText</code>, rendered under &ldquo;Output that was cut off&rdquo; with an explicit instruction not to assume anything it describes happened.</td></tr>
+<tr><td class="k">Regenerate or switch?</td><td><code>route()</code>, capability-gated.</td></tr>
+</tbody></table></div>
+
+<h3>The recovery ladder, revised</h3>
+<pre><code>stream dies mid-turn
+   |
+   1. STREAM_HANDLE present, fresh (&lt;5 min), adapter is StreamResumer?   [new]
+   |     -> GET /v1/responses/{id}?stream=true&amp;starting_after=&lt;seq&gt;
+   |        ... true resumption. No tokens re-billed, no duplicate intent.
+   |
+   2. TOOL_EXECUTING unresolved?
+   |     -> planRecovery: pure/idempotent/unsafe ladder (fingerprint evidence)
+   |
+   3. TOOL_REQUESTED unresolved, no TOOL_EXECUTING?
+   |     -> EXECUTE_TOOL. Provably never started.
+   |
+   4. Otherwise
+         -> REGENERATE_TURN, partial text as a labelled hint</code></pre>
+<p>Step 1 is the only addition. Steps 2&ndash;4 are built and tested. <span class="infer">inference</span> The ladder degrades correctly: a provider without resumption simply starts at step 2, which is where every provider is today.</p>
+
+<div class="note warnb"><span class="lbl">One correctness note on step 1</span>
+<p>Resumption must be gated on the ledger, not only on handle freshness. If the interrupted stream had already emitted a complete <code>tool_call</code> that reached <code>TOOL_EXECUTING</code>, resuming the model stream and <em>also</em> resolving the tool from the ledger risks the model seeing its own tool call twice. Correct order: resolve tool state first (step 2), and resume only when step 2 finds nothing unresolved.</p></div>
+</section>
+
+<section id="s15"><h2><span class="n">15</span>Cross-model continuity architecture</h2><hr>
+<p>The brief&rsquo;s scenario &mdash; Claude edits five files, hits a rate limit, GPT continues, GPT fails, Gemini continues, and it feels like one task &mdash; is implemented in <code>src/policy/handoff.ts</code>. The design decision that makes it sound is stated in its own header: <strong>reconstruct, do not replay.</strong></p>
+
+<h3>Why replay is unsound, with evidence</h3>
+<div class="scroll"><table>
+<thead><tr><th>Replay hazard</th><th>Evidence from this research</th></tr></thead>
+<tbody>
+<tr><td class="k">Partial output is not an assistant message</td><td>A turn cut off mid-sentence never expressed a complete intent; presenting it as prior words invites the successor to assume actions were taken.</td></tr>
+<tr><td class="k">Reasoning is not portable</td><td>Gemini 2.5+/3+ return <code>thoughtSignature</code> &mdash; opaque <em>encrypted</em> strings the model validates for context continuity. Anthropic returns signed thinking blocks; OpenAI returns summaries tied to a response id. <span class="fact">fact</span></td></tr>
+<tr><td class="k">Tool-call ids are provider-scoped</td><td>Gemini below 3.0 emits no <code>FunctionCall.id</code> at all, requiring synthetic ids. An id from one provider has no referent in another. <span class="fact">fact</span></td></tr>
+</tbody></table></div>
+
+<h3>The packet</h3>
+<p>What the successor receives, all derived as a pure function of the ledger:</p>
+<ul>
+<li><strong>Objective</strong> &mdash; and if absent, that fact is reported, with an instruction to take no side-effecting action and ask.</li>
+<li><strong>Completed effects</strong>, each tagged <code>observed</code> (the tool reported its own result) or <code>inferred</code> (recovery concluded it landed from workspace evidence). The renderer states the difference <em>in the sentence</em>, not in a field the model might ignore.</li>
+<li><strong>Narrative</strong> from cleanly-completed turns only.</li>
+<li><strong>Truncated text</strong> in its own field so it can never be mistaken for a completed message, clamped to the <em>tail</em> &mdash; the tail is where the model stopped, and therefore the only part that says where to pick up.</li>
+<li><strong>Pending effects</strong>, split by <code>mayHaveRun</code>. False &rArr; &ldquo;still needs doing&rdquo;. True &rArr; &ldquo;do not run it again; verify current state first&rdquo;.</li>
+<li><strong>Prior models</strong> and compaction count.</li>
+</ul>
+
+<div class="note okb"><span class="lbl">The line that justifies the whole project</span>
+<p>From the module header: <em>&ldquo;A successor model being told &lsquo;the file was written&rsquo; when we only inferred it is how a recovery feature causes the corruption it exists to prevent.&rdquo;</em> No competitor surveyed makes this distinction, because no competitor has a state model capable of expressing it.</p></div>
+
+<h4>Gap: the ledger is not yet the compaction strategy</h4>
+<p>The prior audit notes that context management beyond &ldquo;reuse the handoff as a compaction&rdquo; does not exist, and there is no token accounting &mdash; so <code>CONTEXT</code> failures are only detected reactively from a provider error. LiteLLM&rsquo;s <code>enable_pre_call_checks</code> is the proven pattern. <span class="infer">inference</span> Add an estimator and check the assembled request against the declared <code>contextWindow</code> before sending. Roughly 2 days, and it converts a class of task-ending failures into a routine compaction.</p>
+</section>
+<section id="s16"><h2><span class="n">16</span>API-key management</h2><hr>
+<p>Implemented in <code>src/credentials/store.ts</code>. Prior art is heavy here (&sect;8), so this section is about correctness, not differentiation.</p>
+<div class="scroll"><table>
+<thead><tr><th>Requirement</th><th>State</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td class="k">Secure storage</td><td><span class="pill g">done</span></td><td>VS Code <code>SecretStorage</code> &rarr; OS keychain. Keys are never in settings; <code>package.json</code> says so explicitly at the point of configuration.</td></tr>
+<tr><td class="k">Never logged</td><td><span class="pill g">done</span></td><td>Secrets reach only <code>sign()</code>. <code>CredentialRef</code> carries an opaque id and a label, never material. The loop hands the secret over once and never inspects it.</td></tr>
+<tr><td class="k">Per-key failure tracking</td><td><span class="pill g">done</span></td><td><code>consecutiveFailures</code>, <code>coolingUntil</code>, <code>disabledReason</code>.</td></tr>
+<tr><td class="k">Cooldown</td><td><span class="pill g">done</span></td><td>Cooling keys excluded from <code>readyCredentialIds</code>; <code>coolingRetryAfterMs</code> lets the router choose between waiting and moving.</td></tr>
+<tr><td class="k">Write serialisation</td><td><span class="pill g">done</span></td><td>Promise-chain, same pattern as the ledger. Without it a <code>lastUsedAt</code> patch clobbers a concurrent <code>coolingUntil</code> patch and a rate-limited key returns straight to rotation.</td></tr>
+<tr><td class="k">401 vs 403</td><td><span class="pill g">done</span></td><td>401 disables the key. 403 does not &mdash; it bans the <em>(key, model)</em> pairing. Conflating them takes a key that works everywhere else out of rotation.</td></tr>
+<tr><td class="k">Rate-limit detection</td><td><span class="pill y">partial</span></td><td>429 handled; <code>retry-after</code> is honoured where the classifier is given it. Anthropic sends <code>retry-after</code> on 429 but <em>not</em> meaningfully on 529 &mdash; 529 must use backoff, never a parsed hint. <span class="fact">fact</span></td></tr>
+<tr><td class="k">Round-robin / weighted</td><td><span class="pill y">partial</span></td><td>Selection is first-ready. Adequate for one developer&rsquo;s keys; weighting matters only at fleet scale.</td></tr>
+<tr><td class="k">Health-based routing</td><td><span class="pill r">gap</span></td><td>Only <code>consecutiveFailures</code>/<code>coolingUntil</code>. No latency, no success rate, no per-model or per-endpoint state. See &sect;17.</td></tr>
+<tr><td class="k">Key validation on entry</td><td><span class="pill r">gap</span></td><td>A cheap authenticated call at add-time turns a mistyped key from a mid-task failure into an immediate error.</td></tr>
+</tbody></table></div>
+<div class="note badb"><span class="lbl">Policy caution on multi-key</span>
+<p>Multiple keys for one provider is legitimate for separating personal/work/org billing. Using several free-tier keys to evade a per-account quota is a terms violation at most providers, and Kilo&rsquo;s framing (&ldquo;use Kilo for free without the endless rate limit messages&rdquo;) sails close to it. Support the mechanism; do not market the evasion. Documenting it as billing separation costs nothing and keeps the project publishable.</p></div>
+</section>
+
+<section id="s17"><h2><span class="n">17</span>Model routing and health</h2><hr>
+<p><code>route()</code> is a pure function &mdash; failure plus history plus candidates in, decision out &mdash; which is why 924 lines of tests can cover it without a network. Its principle is <em>never repeat an attempt already known to fail</em>: a rejected credential is never re-offered in the task even if the store has not caught up, a non-retryable failure never becomes a same-model retry, and a model past its per-model budget stops being a candidate.</p>
+
+<h3>Recovery policy ladder</h3>
+<p>The brief&rsquo;s five-step ladder maps onto the implemented decisions, with capability gating throughout &mdash; <code>Requirements</code> (tool calling, vision, minimum context) filters every candidate, so the system can never fail over to a model that cannot do the work.</p>
+<div class="scroll"><table>
+<thead><tr><th>Brief</th><th>Decision</th><th>Gate</th></tr></thead>
+<tbody>
+<tr><td class="k">1. Same model</td><td><code>RETRY_SAME</code></td><td>Only when the classifier said <code>requestRetryable</code>; deterministic backoff, no jitter (single-user editor, no herd to spread)</td></tr>
+<tr><td class="k">2. Same provider, different key</td><td><code>SWITCH_CREDENTIAL</code></td><td>Key not rejected, not cooling, pairing not forbidden</td></tr>
+<tr><td class="k">3. Same provider, other model</td><td><code>SWITCH_MODEL</code></td><td>Capability gate + per-model budget</td></tr>
+<tr><td class="k">4. Different provider</td><td><code>SWITCH_MODEL</code></td><td>Same gate; cheaper wins ties among untried equals</td></tr>
+<tr><td class="k">5. Pause / ask</td><td><code>ESCALATE</code></td><td>Passes through the attempt budget so its actionable question survives</td></tr>
+<tr><td class="k">&mdash;</td><td><code>COMPACT_CONTEXT</code></td><td>Preserves model choice; capped, because past a point compaction is deleting the information the task needs</td></tr>
+</tbody></table></div>
+<p>Every decision carries a <code>tone</code> of <code>observed</code> or <code>inferred</code>, and a <code>degraded</code> flag surfaces silent downgrades. This is the &ldquo;never hide model switching&rdquo; requirement enforced in the type system rather than in UI convention.</p>
+
+<h3>Task-type routing: recommend deferring</h3>
+<p>The brief wants frontend&rarr;visual model, architecture&rarr;reasoning model, rename&rarr;cheap model. This is <span class="pill r">not novel</span> (Cursor Auto, OpenRouter Auto Router, RouteLLM) and it is the feature most likely to make the product feel unpredictable. <span class="infer">inference</span> Classifying a task from a prompt is unreliable, and being silently downgraded to a cheap model on a change the user considered critical is a trust-destroying failure. Defer to Phase&nbsp;3, and when built, make it an explicit, visible, per-task suggestion the user confirms &mdash; not a silent default.</p>
+
+<h3>HealthMonitor &mdash; the recommended build</h3>
+<p>Currently health lives inside <code>CredentialManager</code> and tracks two fields. Extract it, key it on <code>(providerId, credentialId, modelId)</code>, and record: success rate, p50/p95 latency, timeout rate, rate-limit frequency, malformed-response rate, stream-failure rate, cooldown state. Feed it to <code>route()</code> as a tie-break among otherwise-equal candidates. <span class="infer">inference</span> ~2 days, and it is what turns &ldquo;fallback&rdquo; into &ldquo;routing&rdquo;. Persist to workspace state, never to telemetry.</p>
+</section>
+
+<section id="s18"><h2><span class="n">18</span>Security architecture</h2><hr>
+<p>The 2026 threat picture is materially worse than when this class of tool started, and the incidents are real, not theoretical.</p>
+<div class="scroll"><table>
+<thead><tr><th>Threat</th><th>Documented incident</th><th>Defence</th><th>State</th></tr></thead>
+<tbody>
+<tr><td class="k">Malicious extension supply chain</td><td>The Amazon Q extension for VS&nbsp;Code was injected with a wiper prompt. <span class="fact">fact</span></td><td>Publish with provenance; pin dependencies; minimal dependency tree (currently: zero runtime deps &mdash; a genuine advantage worth preserving)</td><td><span class="pill g">good</span></td></tr>
+<tr><td class="k">Indirect prompt injection &rarr; RCE</td><td>Injection caused Cursor&rsquo;s agent to write a malicious <code>.cursor/mcp.json</code> without approval, achieving remote code execution. <span class="fact">fact</span></td><td>Never let model output write agent-configuration paths; treat config files as a protected class</td><td><span class="pill r">gap</span></td></tr>
+<tr><td class="k">Poisoned repository config</td><td>Check Point disclosed RCE in Claude Code via poisoned repository config files. <span class="fact">fact</span></td><td>Workspace Trust &mdash; already <code>untrustedWorkspaces: { supported: false }</code>, correctly justified in <code>package.json</code></td><td><span class="pill g">good</span></td></tr>
+<tr><td class="k">MCP tool poisoning</td><td>Tool <em>descriptions</em> altered to redirect the agent, with no change to agent code. First malicious MCP package in the wild Sept 2025. <span class="fact">fact</span></td><td>Pin and hash tool descriptions; re-confirm on change; no MCP in MVP</td><td><span class="pill n0">n/a yet</span></td></tr>
+<tr><td class="k">Exfiltration via agent reach</td><td>A booby-trapped public GitHub Issue, read via the GitHub MCP server, sent the agent into private repos and back out through a public PR &mdash; the server&rsquo;s token carried blanket access. <span class="fact">fact</span></td><td>Least-privilege tokens; treat tool <em>output</em> as untrusted data, never instructions</td><td><span class="pill y">design</span></td></tr>
+<tr><td class="k">SSRF via configured endpoint</td><td>&mdash;</td><td><code>baseUrl</code> is user-set and pattern-constrained. Warn on plaintext <code>http://</code> to a non-loopback host</td><td><span class="pill y">partial</span></td></tr>
+<tr><td class="k">Credential leakage in logs</td><td>&mdash;</td><td>Secrets confined to <code>sign()</code>; timeline reasons are documented as &ldquo;must be safe to display&rdquo;</td><td><span class="pill g">good</span></td></tr>
+<tr><td class="k">Webview XSS</td><td>&mdash;</td><td><code>enableScripts: false</code>, <code>default-src 'none'</code>, no <code>script-src</code> at all, nonced inline style</td><td><span class="pill g">good</span></td></tr>
+</tbody></table></div>
+<div class="note"><span class="lbl">The structural defence worth naming</span>
+<p>Prompt injection cannot be solved by prompting. The durable defence is that <em>the extension</em>, not the model, owns tool execution and consent &mdash; the model requests, CodeRelay decides. The ledger makes this auditable after the fact: every effect has a recorded intent, a fingerprint, and a provenance tag. <span class="infer">inference</span> &ldquo;An agent whose every side effect is recorded before it happens&rdquo; is a security story, not just a reliability one, and it is under-sold in the current framing.</p></div>
+<h4>Telemetry</h4>
+<p>Recommendation: ship none in v1. It is the cheapest possible differentiator against a category with active supply-chain incidents, and it removes an entire review surface. Benchmarks (&sect;21) run locally and are shared only when the user exports them.</p>
+</section>
+<section id="s19"><h2><span class="n">19</span>VS Code architecture</h2><hr>
+<h3>Process placement</h3>
+<div class="scroll"><table>
+<thead><tr><th>Component</th><th>Runs in</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td class="k">Agent loop, router, recovery, ledger, credentials</td><td>Extension host</td><td>Needs <code>SecretStorage</code>, workspace FS and lifecycle events. All pure-ish TypeScript with no editor dependency in the core, which is why it tests headlessly.</td></tr>
+<tr><td class="k">Timeline UI</td><td>Webview</td><td>Rich rendering. Currently script-free, which is unusually strict and worth keeping as long as the timeline is read-only.</td></tr>
+<tr><td class="k">Shell tools</td><td>Child process / integrated terminal</td><td>See the log-file proposal below.</td></tr>
+<tr><td class="k">Git checkpoints</td><td>Child process (<code>git</code>)</td><td>Private <code>GIT_INDEX_FILE</code>, refs under <code>refs/coderelay/</code>.</td></tr>
+<tr><td class="k">Diagnostics</td><td>Extension host</td><td><code>vscode.languages.getDiagnostics</code> gives LSP results free &mdash; no language server of our own.</td></tr>
+<tr><td class="k">Benchmark runner</td><td>Node, outside the host</td><td>Must run in CI without an editor. Already the case for the whole suite.</td></tr>
+<tr><td class="k">Backend / VPS</td><td>None</td><td>Not required for anything in the MVP. See &sect;20.</td></tr>
+</tbody></table></div>
+
+<h3>The distribution finding</h3>
+<div class="note okb"><span class="lbl">CodeRelay can register itself as a model</span>
+<p>VS Code exposes <code>lm.registerLanguageModelChatProvider</code>, contributed via <code>contributes.languageModelChatProviders</code> with a <code>vendor</code> id, <code>displayName</code> and an optional <code>managementCommand</code> for credential configuration. A provider implements <code>provideLanguageModelChatInformation</code> (with a <code>silent</code> option controlling credential prompting), <code>provideLanguageModelChatResponse</code> (streaming via a progress callback, emitting <code>LanguageModelTextPart</code>, <code>LanguageModelToolCallPart</code>, <code>LanguageModelToolResultPart</code>), and <code>provideTokenCount</code>. <span class="fact">fact</span></p>
+<p><span class="infer">inference</span> This means CodeRelay can expose a single virtual model &mdash; &ldquo;CodeRelay (failover)&rdquo; &mdash; that <em>Copilot Chat and every other LM-API consumer can select</em>. Retry, key rotation and provider failover then benefit tools you did not write. That is a far larger distribution surface than a standalone chat panel competing with Cline, and it is a strictly additive Phase&nbsp;3 feature.</p></div>
+<p><strong>The limit:</strong> at that boundary you are a model, not an agent. Tool execution belongs to the caller, so the ledger, fingerprinting and side-effect safety do <em>not</em> apply. Ship it as a reliability convenience, and be explicit that continuity requires CodeRelay&rsquo;s own task surface.</p>
+
+<h3>Consuming Copilot: possible, constrained</h3>
+<p><code>vscode.lm.selectChatModels({ vendor: 'copilot' })</code> works, requires user consent, must be called from a user-initiated action, and returns an empty array when nothing matches. But third-party agents face <em>strict rate limits</em> on Copilot&rsquo;s LLM, with the guidance being to use your own LLM for volume. <span class="fact">fact</span> Copilot is therefore a poor <em>failover target</em> &mdash; the thing you switch to under load is the thing most likely to throttle. Offer it as a user-selected primary; never as an automatic fallback.</p>
+
+<h3>Process failures</h3>
+<p>Extension crash, window reload, sleep and restart are all handled by the same mechanism: the ledger is on disk with <code>fsync</code> before each effect, and <code>planRecovery</code> re-derives intent on next activation. <code>onStartupFinished</code> activation plus the existing <code>coderelay.resumeTask</code> command is the right shape; it needs wiring, not design.</p>
+</section>
+
+<section id="s20"><h2><span class="n">20</span>Local-first architecture</h2><hr>
+<p>The brief asks when a remote database becomes necessary. Answer: <strong>for the MVP and everything on the roadmap through Phase&nbsp;5, never.</strong></p>
+<div class="scroll"><table>
+<thead><tr><th>Data</th><th>Store</th><th>Justification</th></tr></thead>
+<tbody>
+<tr><td class="k">API keys</td><td><code>SecretStorage</code></td><td>OS keychain. The only correct answer.</td></tr>
+<tr><td class="k">Provider &amp; model config</td><td>Settings JSON</td><td>User-editable, diffable, shareable per-workspace. Never keys.</td></tr>
+<tr><td class="k">Execution ledger</td><td>Append-only JSONL in extension storage</td><td>Crash-safe by construction: <code>fsync</code> before the effect, torn-tail tolerance, <code>seq</code> gaps as a lost-write signal. A database would <em>weaken</em> this &mdash; you would be trusting someone else&rsquo;s durability story for the one file whose ordering is the product.</td></tr>
+<tr><td class="k">Credential health</td><td>Workspace/global state (Memento)</td><td>Small, serialised writes.</td></tr>
+<tr><td class="k">Checkpoints</td><td>Git objects under <code>refs/coderelay/</code></td><td>Content-addressed storage already on the machine, with dedup and GC for free.</td></tr>
+<tr><td class="k">Benchmark results</td><td>JSON in the repo</td><td>Reviewable in a PR, which is the point.</td></tr>
+</tbody></table></div>
+<h4>When a backend becomes necessary</h4>
+<ul>
+<li><strong>Team-shared reliability data</strong> &mdash; aggregating provider health across an org. Genuinely needs a server, and is a different product.</li>
+<li><strong>Long-running tasks that outlive the editor</strong> &mdash; if a task must continue with VS&nbsp;Code closed, that is a daemon. Note OpenAI background mode does part of this provider-side already.</li>
+<li><strong>Cross-machine task handoff.</strong></li>
+<li><strong>Managed key proxying</strong> &mdash; explicitly undesirable; it makes you a credential custodian.</li>
+</ul>
+<p>None are MVP. The zero-runtime-dependency, zero-backend posture is a real competitive asset in a category with active supply-chain incidents (&sect;18) &mdash; state it in the README.</p>
+
+<h4>Offline mode</h4>
+<p>Not built. Required behaviour: preserve task state (already durable), keep local tools working, allow a configured local model (already possible &mdash; <code>auth: "none"</code> against <code>localhost</code>), show the offline state, and <em>queue only operations that provably had no effect</em>. The last clause is where the ledger does the work: a queued turn is safe precisely when <code>planRecovery</code> returns <code>START_TURN</code> or <code>REGENERATE_TURN</code>. Never queue an unresolved <code>TOOL_EXECUTING</code>.</p>
+</section>
+<section id="s21"><h2><span class="n">21</span>Benchmark system</h2><hr>
+<p>Two 2026 papers define the ground here, and aligning with them is worth more than inventing a private methodology.</p>
+<ul>
+<li><strong>AgentChaos</strong> (arXiv 2608.06790, ASE 2026) &mdash; programmatic fault injection at the HTTP interface where agents reach LLMs, so it is non-intrusive and needs no source changes. Taxonomy: <em>crash</em>, <em>omission</em>, and <em>value</em> faults on content and tool-call fields. Across 65 fault configurations, all systems degraded, pass@1 fell by up to 50 points, and existing fault-diagnosis methods scored below 53% on fault-type identification. Conclusion: <em>robustness depends on system implementation rather than model capability.</em> <span class="fact">fact</span></li>
+<li><strong>ReliabilityBench</strong> (arXiv 2601.06112) &mdash; three dimensions: consistency under repeated execution, robustness to semantically equivalent task perturbations, and fault tolerance under injected timeouts, rate limits, partial responses and schema drift. <span class="fact">fact</span></li>
+</ul>
+<div class="note okb"><span class="lbl">The opening these papers leave</span>
+<p>Both measure how much agents <em>degrade</em>. Neither measures how well a system <em>recovers</em>, because the systems tested have no recovery layer to measure. CodeRelay can report the metric the literature is missing: <strong>recovery rate under identical injected faults</strong>. Adopting AgentChaos&rsquo;s taxonomy and injection point makes the comparison legible to anyone who has read the paper.</p></div>
+
+<h3>Metrics</h3>
+<div class="scroll"><table>
+<thead><tr><th>Metric</th><th>Definition</th><th>Target</th></tr></thead>
+<tbody>
+<tr><td class="k">Task completion rate</td><td>Objective satisfied, tests green</td><td>Headline</td></tr>
+<tr><td class="k">Recovery success rate</td><td>Tasks completing <em>despite</em> an injected fault</td><td><strong>The differentiating number</strong></td></tr>
+<tr><td class="k">Duplicate-effect rate</td><td>Side effects applied twice</td><td><strong>Must be 0</strong> &mdash; a single occurrence invalidates the thesis</td></tr>
+<tr><td class="k">Unsafe-adoption rate</td><td><code>ADOPT_COMPLETED_EFFECT</code> where the effect had not landed</td><td><strong>Must be 0</strong></td></tr>
+<tr><td class="k">Escalation precision</td><td>Share of <code>ASK_USER</code> events that were genuinely unresolvable</td><td>High &mdash; over-asking destroys the value</td></tr>
+<tr><td class="k">Time to recovery</td><td>Fault injection &rarr; productive work resumed</td><td>Lower better</td></tr>
+<tr><td class="k">Continuity fidelity</td><td>Does the successor repeat completed work, or contradict established facts?</td><td>Graded per scenario</td></tr>
+<tr><td class="k">Model switch count</td><td>Switches per completed task</td><td>Lower better at equal completion</td></tr>
+<tr><td class="k">Cost / tokens / latency</td><td>Per attempt, per task</td><td>Needs CostTracker (&sect;3 gap)</td></tr>
+</tbody></table></div>
+
+<h3>The four-arm comparison</h3>
+<p>Same tasks, same injected faults, same seeds, four configurations &mdash; this is the experiment the whole project exists to win:</p>
+<div class="scroll"><table>
+<thead><tr><th>Arm</th><th>Configuration</th><th>Expected result</th></tr></thead>
+<tbody>
+<tr><td class="k">A &mdash; Single model</td><td>One provider, retry only</td><td>Baseline. Fails on sustained provider failure.</td></tr>
+<tr><td class="k">B &mdash; Blind fallback</td><td>Switch provider, replay transcript</td><td>Higher completion than A; <span class="infer">expect non-zero duplicate effects</span> &mdash; this is the arm that models what competitors do</td></tr>
+<tr><td class="k">C &mdash; Smart routing</td><td>+ classification, capability gating, health</td><td>Fewer wasted attempts; duplicates unchanged from B</td></tr>
+<tr><td class="k">D &mdash; Continuity-aware</td><td>+ ledger, fingerprints, reconstructed handoff</td><td>Completion &ge; C with <strong>zero</strong> duplicate effects</td></tr>
+</tbody></table></div>
+<p><span class="infer">inference</span> The claim to test is not &ldquo;D completes more tasks&rdquo; &mdash; C may match it. It is that <strong>B and C corrupt workspaces and D does not.</strong> If arm B shows zero duplicates across a realistic fault set, the thesis is weaker than assumed and you should learn that from your own harness before a reviewer does.</p>
+</section>
+
+<section id="s22"><h2><span class="n">22</span>Failure-injection test plan</h2><hr>
+<p>Injection happens at the transport seam, which the architecture already provides: <code>src/providers/transport.ts</code> and <code>node-fetch.ts</code> are separate from decoding, and the existing suite already scripts responses (<code>status(500)</code>, <code>events(...)</code>). The harness is an extension of what exists, not a new system.</p>
+<h4>Three layers</h4>
+<ol class="body">
+<li><strong>Unit</strong> &mdash; string in, <code>NormalizedEvent[]</code> out. Already 381 tests.</li>
+<li><strong>Scripted-transport integration</strong> &mdash; a scripted fault sequence per scenario, asserting on the <em>ledger</em>, which is the durable record of what the system believed and did. Mostly exists in <code>test/agent/loop.test.ts</code>.</li>
+<li><strong>Chaos</strong> &mdash; randomised fault schedules over real task fixtures, asserting invariants rather than exact outcomes.</li>
+</ol>
+<h4>The three invariants worth asserting everywhere</h4>
+<pre><code>INV-1  No SideEffectKey appears with two TOOL_COMPLETED entries.
+INV-2  Every TOOL_EXECUTING is eventually followed by TOOL_COMPLETED,
+       TOOL_RECONCILED, or an ESCALATED that the user resolved.
+INV-3  A cancelled request is never routed, retried, or recorded
+       as a failure.</code></pre>
+<div class="scroll"><table>
+<thead><tr><th>Fault</th><th>Injection</th><th>Assertion</th><th>State</th></tr></thead>
+<tbody>
+<tr><td class="k">429 / 500 / 502 / 503 / 504 / 529</td><td>Scripted status</td><td>Correct class; backoff; 429 rotates key</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Timeout, ECONNRESET, DNS failure</td><td>Throw coded error</td><td><code>NETWORK</code>; no side effect attempted</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Stream truncation mid-text</td><td>Close after N events</td><td><code>truncated</code>; <code>REGENERATE_TURN</code> carries partial as a hint</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Truncation mid-tool-args</td><td>Close between arg fragments</td><td>Call <strong>discarded</strong>, never emitted; <code>incomplete: true</code></td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">HTTP 200 + <code>text/html</code></td><td>Content-type override</td><td><code>STREAM</code> + captive-portal message</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">In-stream <code>overloaded_error</code> after 200</td><td>Anthropic <code>error</code> event</td><td><code>ProviderStreamError</code> &rarr; <code>STREAM</code></td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Auth failure 401 vs 403</td><td>Scripted status</td><td>401 disables key; 403 bans pairing only</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Context overflow</td><td>Error body per provider dialect</td><td><code>CONTEXT</code> &rarr; compact &rarr; larger window</td><td><span class="pill y">partial</span> &mdash; needs real error bodies per provider</td></tr>
+<tr><td class="k">Crash between <code>TOOL_EXECUTING</code> and effect</td><td>Kill after fsync, before write</td><td>Fingerprints match pre-state &rarr; <code>EXECUTE_TOOL</code></td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Crash after effect, before <code>TOOL_COMPLETED</code></td><td>Kill after write</td><td>Fingerprints match post-state &rarr; <code>ADOPT_COMPLETED_EFFECT</code></td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">External edit during the window</td><td>Mutate file mid-flight</td><td>Neither state matches &rarr; <code>ASK_USER</code>, never clobber</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Interrupted shell command</td><td>Kill during terminal tool</td><td><code>unsafe</code> &rarr; <code>ASK_USER</code></td><td><span class="pill y">partial</span></td></tr>
+<tr><td class="k">Torn ledger tail</td><td>Truncate final line</td><td>Parse survives; <code>seq</code> gap flagged</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Key exhaustion</td><td>All keys 429</td><td><code>ESCALATE</code>, not silent stall</td><td><span class="pill g">have</span></td></tr>
+<tr><td class="k">Duplicate tool call in one turn</td><td>Emit same call twice</td><td>Same <code>SideEffectKey</code>; executed once</td><td><span class="pill y">verify</span></td></tr>
+<tr><td class="k">Value faults (AgentChaos)</td><td>Corrupt tool-call fields in a valid stream</td><td>Malformed args rejected, not executed</td><td><span class="pill r">todo</span></td></tr>
+<tr><td class="k">Full offline</td><td>All origins unreachable</td><td>Budget frozen; task parked; auto-resume</td><td><span class="pill r">todo</span> &mdash; needs NetworkMonitor</td></tr>
+<tr><td class="k">Stale stream handle</td><td>Resume after &gt;5 min</td><td>Falls back to <code>REGENERATE_TURN</code></td><td><span class="pill r">todo</span> &mdash; needs &sect;5</td></tr>
+</tbody></table></div>
+</section>
+<section id="s23"><h2><span class="n">23</span>Edge-case matrix &mdash; 56 cases</h2><hr>
+<p>Columns follow the brief. <strong>Rty</strong> = retry same target, <strong>Fbk</strong> = failover, <strong>Ckpt</strong> = checkpoint interaction, <strong>Notify</strong> = user is told. Risk is the consequence of getting it <em>wrong</em>, not of the event.</p>
+<div class="scroll"><table class="matrix">
+<thead><tr><th>#</th><th>Scenario</th><th>Detection</th><th>Action</th><th>Rty</th><th>Fbk</th><th>Ckpt</th><th>Notify</th><th>Risk</th><th>Recovery verification</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="k">429 rate limit</td><td>status 429 + <code>retry-after</code></td><td>Backoff, rotate key</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Next attempt returns 200</td></tr>
+<tr><td class="num">2</td><td class="k">529 provider overload</td><td>status 529</td><td>Exponential backoff; ignore any retry-after</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>200 on retry</td></tr>
+<tr><td class="num">3</td><td class="k">500 / 502 / 503 / 504</td><td>status in retryable set</td><td>Backoff then switch model</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>200 on retry</td></tr>
+<tr><td class="num">4</td><td class="k">408 request timeout</td><td>status 408</td><td>Backoff</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>200 on retry</td></tr>
+<tr><td class="num">5</td><td class="k">409 conflict</td><td>status 409</td><td>Not retried &mdash; recurs identically</td><td>no</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Alternate model succeeds</td></tr>
+<tr><td class="num">6</td><td class="k">DNS failure</td><td>ENOTFOUND / EAI_AGAIN</td><td><code>NETWORK</code>; probe all origins</td><td>yes</td><td>no</td><td>&mdash;</td><td>status bar</td><td>low</td><td>Probe resolves</td></tr>
+<tr><td class="num">7</td><td class="k">Connection refused</td><td>ECONNREFUSED</td><td><code>NETWORK</code>; common on a dead local model server</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Connect succeeds</td></tr>
+<tr><td class="num">8</td><td class="k">Connection reset pre-token</td><td>ECONNRESET, 0 tokens</td><td>Safe replay &mdash; no intent formed</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Ledger has no <code>TOOL_REQUESTED</code></td></tr>
+<tr><td class="num">9</td><td class="k">Connection reset post-token</td><td>ECONNRESET, tokens seen</td><td><code>planRecovery</code> decides; never a blind resend</td><td>via plan</td><td>yes</td><td>read</td><td>timeline</td><td><strong>high</strong></td><td>Fingerprint comparison</td></tr>
+<tr><td class="num">10</td><td class="k">Socket / headers timeout</td><td>undici UND_ERR_*</td><td><code>NETWORK</code></td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Response arrives</td></tr>
+<tr><td class="num">11</td><td class="k">TLS handshake timeout</td><td>EPROTO, ERR_TLS_HANDSHAKE_TIMEOUT</td><td>Transient &rarr; <code>NETWORK</code></td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Handshake completes</td></tr>
+<tr><td class="num">12</td><td class="k">Untrusted certificate</td><td>CERT_HAS_EXPIRED, self-signed chain</td><td><code>TLS_UNTRUSTED</code>; stop immediately with CA guidance</td><td><strong>no</strong></td><td>no</td><td>&mdash;</td><td><strong>modal</strong></td><td>med</td><td>User fixes proxy CA</td></tr>
+<tr><td class="num">13</td><td class="k">Captive portal</td><td>200 + <code>text/html</code></td><td><code>STREAM</code>; name the interceptor</td><td>yes</td><td>no</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Content-type is JSON/SSE</td></tr>
+<tr><td class="num">14</td><td class="k">Corporate proxy error page</td><td>200 + non-JSON on &lt;400</td><td>As #13</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Valid body</td></tr>
+<tr><td class="num">15</td><td class="k">5xx carrying HTML</td><td>status&ge;500 + HTML</td><td><strong>Not</strong> a portal &mdash; provider failing</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Correct class in ledger</td></tr>
+<tr><td class="num">16</td><td class="k">VPN reconnect</td><td>ECONNRESET, or TLS trust codes if MITM</td><td><code>NETWORK</code> or <code>TLS_UNTRUSTED</code></td><td>yes</td><td>no</td><td>&mdash;</td><td>status bar</td><td>med</td><td>Probe succeeds</td></tr>
+<tr><td class="num">17</td><td class="k">Full internet loss</td><td>All origin probes fail</td><td>Freeze budget, park task, poll</td><td>deferred</td><td><strong>no</strong></td><td>keep</td><td>status bar</td><td>med</td><td>Probe succeeds &rarr; re-plan</td></tr>
+<tr><td class="num">18</td><td class="k">Gateway down, provider up</td><td>TCP connects, 502/504</td><td>Provider switch, not offline mode</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Other provider responds</td></tr>
+<tr><td class="num">19</td><td class="k">401 invalid key</td><td>status 401</td><td>Disable key, rotate</td><td>other key</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Next key returns 200</td></tr>
+<tr><td class="num">20</td><td class="k">403 model not entitled</td><td>status 403</td><td>Ban <em>(key, model)</em> pair only</td><td>no</td><td>model</td><td>&mdash;</td><td>timeline</td><td><strong>high</strong></td><td>Key still works elsewhere</td></tr>
+<tr><td class="num">21</td><td class="k">403 region blocked</td><td>403 + region text</td><td>As #20; escalate if no target</td><td>no</td><td>model</td><td>&mdash;</td><td>escalate</td><td>med</td><td>Alternate region succeeds</td></tr>
+<tr><td class="num">22</td><td class="k">Token expiry mid-task</td><td>401 after prior success</td><td>Rotate; re-auth prompt</td><td>other key</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Fresh credential works</td></tr>
+<tr><td class="num">23</td><td class="k">All keys exhausted</td><td>Every candidate cooling/disabled</td><td><code>ESCALATE</code> &mdash; never a silent stall</td><td>no</td><td>no</td><td>keep</td><td><strong>modal</strong></td><td>med</td><td>User adds key or waits</td></tr>
+<tr><td class="num">24</td><td class="k">Invalid model id</td><td>400 + unknown model</td><td><code>CONFIG</code> &rarr; switch model</td><td>no</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Valid model responds</td></tr>
+<tr><td class="num">25</td><td class="k">Wrong max-tokens field</td><td>400 on every attempt</td><td><code>CONFIG</code>; failover cannot fix a config error</td><td>no</td><td>yes</td><td>&mdash;</td><td>escalate</td><td>med</td><td>User sets <code>maxTokensField</code></td></tr>
+<tr><td class="num">26</td><td class="k">Unsupported parameter</td><td>400 on a param</td><td><code>CONFIG</code></td><td>no</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Other model accepts</td></tr>
+<tr><td class="num">27</td><td class="k">Gemini without <code>alt=sse</code></td><td>200, single JSON, not SSE</td><td>Completion decoder or <code>STREAM</code></td><td>yes</td><td>no</td><td>&mdash;</td><td>timeline</td><td>med</td><td>SSE frames arrive</td></tr>
+<tr><td class="num">28</td><td class="k">Context overflow on input</td><td>413 or dialect-specific message</td><td><code>COMPACT_CONTEXT</code>, capped</td><td>no</td><td>bigger</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Request fits</td></tr>
+</tbody></table></div>
+<div class="scroll"><table class="matrix">
+<thead><tr><th>#</th><th>Scenario</th><th>Detection</th><th>Action</th><th>Rty</th><th>Fbk</th><th>Ckpt</th><th>Notify</th><th>Risk</th><th>Recovery verification</th></tr></thead>
+<tbody>
+<tr><td class="num">29</td><td class="k">Output cap hit cleanly</td><td><code>StopReason: length</code></td><td>Continue turn &mdash; <strong>not</strong> a failure</td><td>no</td><td>no</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Distinguished from <code>truncated</code></td></tr>
+<tr><td class="num">30</td><td class="k">Repeated compaction</td><td>Compactions &gt; cap</td><td>Escalate &mdash; further compaction deletes needed information</td><td>no</td><td>bigger</td><td>keep</td><td>escalate</td><td>med</td><td>Larger window accepts</td></tr>
+<tr><td class="num">31</td><td class="k">Content-policy refusal</td><td>Moderation error / refusal stop</td><td><span class="pill r">gap</span> &mdash; needs <code>CONTENT_POLICY</code> class (&sect;12)</td><td>no</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Different model completes</td></tr>
+<tr><td class="num">32</td><td class="k">Unknown stop reason</td><td>Unrecognised string / null</td><td>Normalised to <code>truncated</code>, never <code>stop</code></td><td>via plan</td><td>yes</td><td>read</td><td>timeline</td><td><strong>high</strong></td><td>Turn regenerated, not assumed done</td></tr>
+<tr><td class="num">33</td><td class="k">Stream stops mid-sentence</td><td>Early end, tokens seen</td><td><code>REGENERATE_TURN</code>, partial as labelled hint</td><td>yes</td><td>yes</td><td>read</td><td>timeline</td><td>med</td><td>Successor told text was cut off</td></tr>
+<tr><td class="num">34</td><td class="k">Stream stops mid tool-args</td><td>Fragments incomplete at close</td><td>Call <strong>discarded</strong>; <code>incomplete: true</code></td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td><strong>high</strong></td><td>No <code>TOOL_REQUESTED</code> written</td></tr>
+<tr><td class="num">35</td><td class="k">Malformed SSE frame</td><td>Unparseable chunk</td><td><code>ProviderStreamError</code> &rarr; <code>STREAM</code></td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td>med</td><td>Clean stream on retry</td></tr>
+<tr><td class="num">36</td><td class="k">Unterminated final event</td><td>No blank-line terminator</td><td>Never dispatched</td><td>yes</td><td>yes</td><td>&mdash;</td><td>timeline</td><td><strong>high</strong></td><td>Parser test</td></tr>
+<tr><td class="num">37</td><td class="k">In-stream error after 200</td><td>Anthropic/Gemini <code>error</code> object</td><td><code>STREAM</code>; partial text preserved</td><td>yes</td><td>yes</td><td>read</td><td>timeline</td><td>med</td><td>Ledger holds partial</td></tr>
+<tr><td class="num">38</td><td class="k">Stream handle stale (&gt;5 min)</td><td>Resume rejected as too old</td><td>Fall back to <code>REGENERATE_TURN</code></td><td>yes</td><td>yes</td><td>read</td><td>timeline</td><td>med</td><td>Regeneration proceeds</td></tr>
+<tr><td class="num">39</td><td class="k">Resume vs unresolved tool</td><td>Handle present <em>and</em> <code>TOOL_EXECUTING</code> open</td><td>Resolve tool first; resume only if clean</td><td>ordered</td><td>&mdash;</td><td>read</td><td>timeline</td><td><strong>high</strong></td><td>No double tool-call in context</td></tr>
+<tr><td class="num">40</td><td class="k">Duplicate tool call in one turn</td><td>Two calls, same normalised args</td><td>Same <code>SideEffectKey</code> &rarr; executed once</td><td>no</td><td>&mdash;</td><td>one</td><td>timeline</td><td><strong>high</strong></td><td>INV-1 holds</td></tr>
+<tr><td class="num">41</td><td class="k">Hallucinated tool name</td><td>No matching tool</td><td>Failure returned as transcript context; task continues</td><td>&mdash;</td><td>no</td><td>&mdash;</td><td>timeline</td><td>low</td><td>Model self-corrects</td></tr>
+<tr><td class="num">42</td><td class="k">Malformed tool arguments</td><td>Args not valid JSON</td><td><code>parseToolArgs</code> returns null &rarr; not executed</td><td>&mdash;</td><td>no</td><td>&mdash;</td><td>timeline</td><td><strong>high</strong></td><td>No effect recorded</td></tr>
+<tr><td class="num">43</td><td class="k">Tool timeout</td><td>Runner deadline</td><td><code>TOOL</code> &mdash; reported to model, never routed</td><td>&mdash;</td><td>no</td><td>keep</td><td>timeline</td><td>med</td><td>Model reacts</td></tr>
+<tr><td class="num">44</td><td class="k">Failing test suite</td><td>Non-zero exit</td><td>Information, <strong>not</strong> a routing failure</td><td>&mdash;</td><td><strong>no</strong></td><td>keep</td><td>timeline</td><td><strong>high</strong></td><td>Task continues, model fixes</td></tr>
+<tr><td class="num">45</td><td class="k">Crash before effect</td><td><code>TOOL_EXECUTING</code>, pre-state matches</td><td><code>EXECUTE_TOOL</code></td><td>yes</td><td>&mdash;</td><td>read</td><td>timeline</td><td>med</td><td>Fingerprint equality</td></tr>
+<tr><td class="num">46</td><td class="k">Crash after effect</td><td><code>TOOL_EXECUTING</code>, post-state matches</td><td><code>ADOPT_COMPLETED_EFFECT</code>, tagged <em>inferred</em></td><td>no</td><td>&mdash;</td><td>read</td><td>timeline</td><td><strong>high</strong></td><td>Successor told it is unverified</td></tr>
+<tr><td class="num">47</td><td class="k">Crash, neither state matches</td><td>Fingerprints diverge</td><td><code>ASK_USER</code> &mdash; never clobber</td><td>no</td><td>&mdash;</td><td>offer</td><td><strong>modal</strong></td><td><strong>critical</strong></td><td>User decides</td></tr>
+<tr><td class="num">48</td><td class="k">Crash during shell command</td><td><code>unsafe</code>, no evidence</td><td><code>ASK_USER</code> &mdash; honest, unresolvable</td><td>no</td><td>&mdash;</td><td>offer</td><td><strong>modal</strong></td><td><strong>critical</strong></td><td>User decides; see log proposal</td></tr>
+<tr><td class="num">49</td><td class="k">File changed externally</td><td>Pre-state fingerprint mismatch</td><td>Refuse the edit; re-read</td><td>no</td><td>&mdash;</td><td>keep</td><td>timeline</td><td><strong>critical</strong></td><td>Fresh read matches</td></tr>
+<tr><td class="num">50</td><td class="k">File deleted mid-task</td><td>Fingerprint of absent file</td><td>Report to model as fact</td><td>&mdash;</td><td>no</td><td>keep</td><td>timeline</td><td>med</td><td>Model re-plans</td></tr>
+<tr><td class="num">51</td><td class="k">Permission denied</td><td>EACCES / EPERM</td><td><code>FILESYSTEM</code> &mdash; reported, not routed</td><td>no</td><td>no</td><td>keep</td><td>timeline</td><td>med</td><td>User fixes permissions</td></tr>
+<tr><td class="num">52</td><td class="k">Formatter rewrites after edit</td><td>Post-state differs from expected</td><td>Compare semantically or re-fingerprint post-format</td><td>no</td><td>&mdash;</td><td>keep</td><td>silent</td><td>med</td><td>No spurious <code>ASK_USER</code></td></tr>
+<tr><td class="num">53</td><td class="k">VS Code reload mid-task</td><td>Activation with open ledger</td><td><code>planRecovery</code> on startup</td><td>via plan</td><td>&mdash;</td><td>read</td><td>notification</td><td><strong>high</strong></td><td>Plan matches pre-crash state</td></tr>
+<tr><td class="num">54</td><td class="k">Machine sleep / wake</td><td>Dead sockets, clock jump</td><td>Treat as interruption; re-plan, never resume blind</td><td>via plan</td><td>&mdash;</td><td>read</td><td>status bar</td><td><strong>high</strong></td><td>Fingerprints re-verified</td></tr>
+<tr><td class="num">55</td><td class="k">Torn ledger tail</td><td>Final line unparseable</td><td>Discard tail, keep prefix; flag <code>seq</code> gap</td><td>&mdash;</td><td>&mdash;</td><td>read</td><td>timeline</td><td><strong>high</strong></td><td>Prefix loads; gap surfaced</td></tr>
+<tr><td class="num">56</td><td class="k">Nested git repo / no repo</td><td>Checkpoint init fails</td><td>Degrade to no-checkpoint, keep running &mdash; <em>never</em> block the task</td><td>&mdash;</td><td>&mdash;</td><td><strong>off</strong></td><td>timeline</td><td>med</td><td>Task completes; competitors fail here</td></tr>
+</tbody></table></div>
+<div class="note"><span class="lbl">Reading the risk column</span>
+<p>The four <strong>critical</strong> rows (47, 48, 49 and, by consequence, 40) are the ones that decide whether this product is trustworthy. All four resolve to &ldquo;ask the user&rdquo; or &ldquo;refuse&rdquo; rather than to a clever inference &mdash; which is correct. A recovery system that guesses on the critical rows is worse than no recovery system, because it removes the user&rsquo;s chance to notice.</p>
+<p>Row 56 deserves attention as a <em>marketing</em> row: it is the exact failure that fills Cline and Roo Code issue trackers. Degrading gracefully where they hard-fail is a demonstrable, screenshot-able advantage.</p></div>
+</section>
+<section id="s24"><h2><span class="n">24</span>MVP</h2><hr>
+<div class="note badb"><span class="lbl">The MVP is not what you think it is</span>
+<p>The brief lists fourteen MVP priorities. <strong>Eleven are already built and tested.</strong> The MVP is not a build &mdash; it is a wiring job plus three small gaps. The prior audit says it plainly: <em>&ldquo;every component the MVP needs exists and is tested, but nothing in the editor can reach them.&rdquo;</em></p></div>
+<div class="scroll"><table>
+<thead><tr><th>#</th><th>MVP requirement</th><th>State</th><th>Remaining work</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="k">VS Code extension</td><td><span class="pill y">shell</span></td><td>Commands are declared; <code>startTask</code>/<code>resumeTask</code> are not wired to <code>AgentLoop</code></td></tr>
+<tr><td class="num">2</td><td class="k">Multiple providers</td><td><span class="pill g">done</span></td><td>Anthropic, OpenAI-compatible, Gemini. NVIDIA/OpenRouter/local are config rows.</td></tr>
+<tr><td class="num">3</td><td class="k">Secure API keys</td><td><span class="pill g">done</span></td><td>Credential-entry UI needs wiring</td></tr>
+<tr><td class="num">4</td><td class="k">Common tool protocol</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">5</td><td class="k">Model routing</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">6</td><td class="k">Retry</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">7</td><td class="k">Fallback</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">8</td><td class="k">Task checkpoint</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">9</td><td class="k">Context continuity</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">10</td><td class="k">Network recovery</td><td><span class="pill y">partial</span></td><td><strong>NetworkMonitor</strong> &mdash; offline vs provider-down</td></tr>
+<tr><td class="num">11</td><td class="k">Streaming recovery</td><td><span class="pill g">done</span></td><td>Regeneration path complete; resumption is post-MVP</td></tr>
+<tr><td class="num">12</td><td class="k">Safe file editing</td><td><span class="pill g">done</span></td><td>&mdash;</td></tr>
+<tr><td class="num">13</td><td class="k">Execution timeline</td><td><span class="pill y">partial</span></td><td>Renderer exists; needs live task feed</td></tr>
+<tr><td class="num">14</td><td class="k">Basic benchmark</td><td><span class="pill y">partial</span></td><td>Fault injection exists as unit tests; needs a runner and a report</td></tr>
+</tbody></table></div>
+<h4>MVP definition of done</h4>
+<ol class="body">
+<li>A user adds a key, configures two models across two providers, types an objective, and watches a task run to completion in the timeline.</li>
+<li>Killing the network mid-task, or reloading the window, resumes without repeating a file edit.</li>
+<li>The 381-test suite is green, plus the two stale tests corrected.</li>
+<li>One benchmark scenario produces a four-arm comparison table.</li>
+</ol>
+<p><strong>Explicitly out:</strong> MCP, subagents, browser automation, task-type routing, cost limits, LM chat provider registration, Bedrock, Copilot. None is needed to demonstrate the thesis, and each is a place to lose a month.</p>
+</section>
+
+<section id="s25"><h2><span class="n">25</span>Phased roadmap</h2><hr>
+<p>Estimates assume one experienced developer, part-time. <strong>Solo?</strong> answers whether one person can realistically ship it.</p>
+<div class="scroll"><table class="matrix">
+<thead><tr><th>Phase</th><th>Item</th><th>Cx</th><th>Est.</th><th>Depends on</th><th>Risk</th><th>Pri</th><th>Solo?</th></tr></thead>
+<tbody>
+<tr><td class="k">1 &mdash; Prototype</td><td>Fix build; correct 2 stale tests</td><td>trivial</td><td>1h</td><td>&mdash;</td><td>none</td><td><strong>P0</strong></td><td>yes</td></tr>
+<tr><td class="k">1</td><td>Wire <code>startTask</code> &rarr; <code>AgentLoop</code></td><td>med</td><td>3&ndash;4d</td><td>&mdash;</td><td>low</td><td><strong>P0</strong></td><td>yes</td></tr>
+<tr><td class="k">1</td><td>Credential + provider setup UI</td><td>med</td><td>2&ndash;3d</td><td>&mdash;</td><td>low</td><td><strong>P0</strong></td><td>yes</td></tr>
+<tr><td class="k">1</td><td>Live timeline feed</td><td>med</td><td>2&ndash;3d</td><td>wiring</td><td>low</td><td><strong>P0</strong></td><td>yes</td></tr>
+<tr><td class="k">1</td><td>Resume-on-activation flow</td><td>low</td><td>1&ndash;2d</td><td>wiring</td><td>low</td><td><strong>P0</strong></td><td>yes</td></tr>
+<tr><td class="k">2 &mdash; Reliable MVP</td><td>NetworkMonitor (offline vs provider-down)</td><td>med</td><td>1&ndash;2d</td><td>&mdash;</td><td>low</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">2</td><td>Pre-call context check + token estimator</td><td>med</td><td>2d</td><td>&mdash;</td><td>med</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">2</td><td><code>CONTENT_POLICY</code> error class</td><td>low</td><td>0.5d</td><td>&mdash;</td><td>low</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">2</td><td>Gemini synthetic-id scoping fix</td><td>trivial</td><td>1h</td><td>&mdash;</td><td>low</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">2</td><td>Azure signer + OpenRouter/NVIDIA config presets</td><td>low</td><td>1&ndash;2d</td><td>&mdash;</td><td>low</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">2</td><td>Key validation on entry</td><td>low</td><td>0.5d</td><td>cred UI</td><td>low</td><td>P2</td><td>yes</td></tr>
+<tr><td class="k">2</td><td>CostTracker</td><td>low</td><td>1&ndash;2d</td><td>&mdash;</td><td>low</td><td>P2</td><td>yes</td></tr>
+<tr><td class="k">2</td><td>Offline queue + auto-resume</td><td>med</td><td>2d</td><td>NetworkMonitor</td><td>med</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">3 &mdash; Advanced</td><td>OpenAI background-mode stream resumption</td><td><strong>high</strong></td><td>3&ndash;5d</td><td>Responses builder</td><td>med</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">3</td><td>HealthMonitor extraction + latency routing</td><td>med</td><td>2&ndash;3d</td><td>&mdash;</td><td>low</td><td>P2</td><td>yes</td></tr>
+<tr><td class="k">3</td><td>Terminal effect-log evidence (audit proposal)</td><td>med</td><td>2&ndash;3d</td><td>&mdash;</td><td>med</td><td>P2</td><td>yes</td></tr>
+<tr><td class="k">3</td><td><code>registerLanguageModelChatProvider</code></td><td>med</td><td>3&ndash;4d</td><td>adapters</td><td>med</td><td>P2</td><td>yes</td></tr>
+<tr><td class="k">3</td><td>Bedrock SigV4 adapter</td><td><strong>high</strong></td><td>4&ndash;6d</td><td><code>sign()</code></td><td>med</td><td>P3</td><td>yes</td></tr>
+<tr><td class="k">3</td><td>MCP client</td><td><strong>high</strong></td><td>1&ndash;2w</td><td>tool protocol</td><td><strong>high</strong> (&sect;18)</td><td>P3</td><td>tight</td></tr>
+<tr><td class="k">3</td><td>Subagents / parallel tasks</td><td><strong>high</strong></td><td>2w+</td><td>re-entrant loop</td><td><strong>high</strong></td><td>P4</td><td>no</td></tr>
+<tr><td class="k">4 &mdash; Benchmark</td><td>Chaos harness on the transport seam</td><td>med</td><td>3&ndash;4d</td><td>&mdash;</td><td>low</td><td><strong>P1</strong></td><td>yes</td></tr>
+<tr><td class="k">4</td><td>Task fixtures + four-arm runner</td><td>med</td><td>4&ndash;5d</td><td>harness</td><td>med</td><td><strong>P1</strong></td><td>yes</td></tr>
+<tr><td class="k">4</td><td>Report generation + published results</td><td>low</td><td>2&ndash;3d</td><td>runner</td><td>low</td><td><strong>P1</strong></td><td>yes</td></tr>
+<tr><td class="k">5 &mdash; Hardening</td><td>Config-path write protection (&sect;18)</td><td>low</td><td>1d</td><td>&mdash;</td><td>low</td><td><strong>P1</strong></td><td>yes</td></tr>
+<tr><td class="k">5</td><td>Permission modes (plan / auto-edit / ask)</td><td>med</td><td>2&ndash;3d</td><td>tool runtime</td><td>low</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">5</td><td>Redaction audit across all surfaces</td><td>low</td><td>1&ndash;2d</td><td>&mdash;</td><td>low</td><td>P1</td><td>yes</td></tr>
+<tr><td class="k">5</td><td>Large-repo checkpoint performance</td><td>med</td><td>2&ndash;3d</td><td>&mdash;</td><td>med</td><td>P2</td><td>yes</td></tr>
+<tr><td class="k">6 &mdash; Launch</td><td>README, docs, demo recording</td><td>low</td><td>3&ndash;4d</td><td>MVP</td><td>low</td><td><strong>P0</strong></td><td>yes</td></tr>
+<tr><td class="k">6</td><td>Marketplace publish + CI release</td><td>low</td><td>1&ndash;2d</td><td>all</td><td>low</td><td><strong>P0</strong></td><td>yes</td></tr>
+</tbody></table></div>
+<p><strong>Critical path to a demonstrable product: roughly 2&ndash;3 weeks of focused work</strong> (Phase 1 + the P1 items of Phase 2 + the Phase 4 benchmark). Everything else is elective. <span class="infer">inference</span></p>
+<div class="note warnb"><span class="lbl">The two items to cut hardest</span>
+<p><strong>MCP</strong> and <strong>subagents</strong> are the features most likely to consume a quarter and add nothing to the thesis. MCP additionally imports the entire &sect;18 threat surface &mdash; tool poisoning, malicious servers, exfiltration via blanket-scoped tokens. A reliability product that ships an unreviewed MCP client has undermined its own positioning.</p></div>
+</section>
+<section id="s26"><h2><span class="n">26</span>Repository structure</h2><hr>
+<p>The brief proposes a structure. The repository already has one, and it differs in ways that are improvements &mdash; keep them.</p>
+<div class="scroll"><table>
+<thead><tr><th>Brief</th><th>Actual</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td class="k"><code>core/</code></td><td><code>core/types.ts</code></td><td>Same. The &ldquo;no provider may be named here&rdquo; rule is enforced and worth keeping as a lint.</td></tr>
+<tr><td class="k"><code>agent/</code></td><td><code>agent/loop.ts</code>, <code>app/session.ts</code></td><td>Splitting session orchestration from the turn loop is better than the brief.</td></tr>
+<tr><td class="k"><code>router/</code>, <code>recovery/</code></td><td><code>policy/{route,handoff}</code>, <code>recovery/{classify,replay}</code></td><td><strong>Better.</strong> <em>Policy</em> (pure decisions) vs <em>recovery</em> (evidence interpretation) is the more meaningful cut.</td></tr>
+<tr><td class="k"><code>continuity/</code></td><td><code>continuity/{ledger,entries,tasks}</code></td><td>Same.</td></tr>
+<tr><td class="k"><code>git/</code></td><td><code>checkpoint/git.ts</code></td><td>Better &mdash; named for purpose, not for the tool.</td></tr>
+<tr><td class="k"><code>workspace/</code></td><td><code>workspace/probe.ts</code>, <code>tools/file-tools.ts</code></td><td>Same.</td></tr>
+<tr><td class="k"><code>security/</code></td><td><code>credentials/store.ts</code></td><td>Adequate. Security is a property enforced at boundaries, not a folder.</td></tr>
+<tr><td class="k"><code>health/</code>, <code>benchmark/</code></td><td>&mdash;</td><td><span class="pill r">to add</span></td></tr>
+</tbody></table></div>
+<pre><code>src/
+  core/types.ts ............ provider-agnostic vocabulary (no vendor names)
+  agent/loop.ts ............ turn loop, attempt/turn separation
+  app/session.ts ........... task lifecycle
+  providers/
+    adapter.ts ............. ProviderAdapter, StreamDecoder, sign()
+    sse.ts, transport.ts ... parse and fetch, decoupled from decode
+    anthropic.ts openai.ts gemini.ts
+    catalog.ts registry.ts requests.ts
+    resume.ts .............. StreamResumer                        [new]
+  policy/route.ts .......... pure routing decisions
+  policy/handoff.ts ........ reconstruction, provenance-tagged
+  recovery/classify.ts ..... failure -&gt; ErrorClass
+  recovery/replay.ts ....... ledger + workspace -&gt; RecoveryPlan
+  continuity/{ledger,entries,tasks}.ts
+  tools/{tool,runner,file-tools}.ts
+  workspace/probe.ts ....... fingerprints
+  checkpoint/git.ts ........ private index, unreachable refs
+  credentials/store.ts ..... SecretStorage + cooldown
+  health/monitor.ts ........ per (provider,key,model) stats       [new]
+  net/monitor.ts ........... offline vs provider-down             [new]
+  cost/tracker.ts .......... tokens + USD per attempt             [new]
+  ui/{timeline,webview}.ts
+  extension.ts ............. activation, commands, wiring
+bench/
+  harness.ts ............... fault injection at the transport seam [new]
+  scenarios/ ............... task fixtures                        [new]
+  report.ts ................ four-arm comparison output           [new]</code></pre>
+<div class="note"><span class="lbl">One housekeeping note</span>
+<p><code>policy/route.ts</code> and <code>providers/catalog.ts</code> embed literal NUL characters as composite map-key delimiters. That is valid TypeScript and semantically fine, but it makes <code>file(1)</code> report the sources as binary and makes plain <code>grep</code> skip them silently &mdash; which cost real time during this audit. Replacing the literals with <code>&bsol;u0000</code> escapes preserves the behaviour exactly and keeps the files greppable.</p></div>
+</section>
+
+<section id="s27"><h2><span class="n">27</span>Implementation plan</h2><hr>
+<p>The interfaces the brief asks for exist. What follows is the delta &mdash; the signatures to add, written against the current code.</p>
+<h4>Stream resumption (&sect;5, &sect;14)</h4>
+<pre><code>// core/types.ts
+interface ModelCapabilities { /* ... */ readonly resumableStream: boolean; }
+
+// continuity/entries.ts - new entry, appended when the run id is known
+| { type: 'STREAM_HANDLE'; providerRunId: string; startedAt: number }
+| { type: 'STREAM_SEQUENCE'; lastSequence: number }   // eventual append
+
+// providers/resume.ts
+export interface StreamResumer {
+  resume(h: StreamHandle, afterSequence: number): BuiltRequest;
+  cancel(h: StreamHandle): BuiltRequest;
+}</code></pre>
+<p><code>planRecovery</code> gains a branch <em>after</em> tool resolution and <em>before</em> <code>REGENERATE_TURN</code> (order matters &mdash; edge case #39).</p>
+
+<h4>Network monitoring (&sect;13)</h4>
+<pre><code>// net/monitor.ts
+export type NetworkVerdict =
+  | { kind: 'ONLINE' }
+  | { kind: 'OFFLINE' }                              // every origin unreachable
+  | { kind: 'PROVIDER_DOWN'; providerId: string };   // this one only
+
+export interface NetworkMonitor {
+  /** Probes configured origins concurrently. Never contacts a third party. */
+  classify(origins: readonly string[]): Promise&lt;NetworkVerdict&gt;;
+}</code></pre>
+<p><code>OFFLINE</code> must <strong>freeze</strong> the attempt budget rather than consume it &mdash; failing over to five unreachable providers burns the budget and ends the task for a fault that will clear on its own.</p>
+
+<h4>Health (&sect;17)</h4>
+<pre><code>// health/monitor.ts
+export interface HealthKey { providerId: string; credentialId: string; modelId: string }
+export interface HealthStats {
+  successRate: number; p50LatencyMs: number; p95LatencyMs: number;
+  timeoutRate: number; rateLimitRate: number;
+  malformedRate: number; streamFailureRate: number;
+  coolingUntil: number | null; samples: number;
+}
+export interface HealthMonitor {
+  record(k: HealthKey, outcome: AttemptOutcome): void;
+  stats(k: HealthKey): HealthStats | null;
+}</code></pre>
+<p>Consumed by <code>route()</code> as a <em>tie-break only</em>. Health must never override a capability gate or resurrect a rejected credential &mdash; that ordering is what keeps the router&rsquo;s guarantees intact.</p>
+
+<h4>Benchmark (&sect;21)</h4>
+<pre><code>// bench/harness.ts
+export type Fault =
+  | { kind: 'crash';    at: 'pre-request' | 'mid-stream' | 'post-tool' }
+  | { kind: 'omission'; drop: 'tool_call' | 'stop_event' | 'usage' }
+  | { kind: 'value';    corrupt: 'tool_args' | 'tool_name' | 'content' }
+  | { kind: 'status';   code: number }
+  | { kind: 'transport'; code: string };
+
+export interface BenchmarkRunner {
+  run(scenario: Scenario, arm: 'A'|'B'|'C'|'D', faults: readonly Fault[],
+      seed: number): Promise&lt;BenchmarkResult&gt;;
+}</code></pre>
+<p>The <code>crash</code>/<code>omission</code>/<code>value</code> taxonomy is AgentChaos&rsquo;s, deliberately, so results are comparable to published work.</p>
+
+<h4>Immediate fixes, in order</h4>
+<ol class="body">
+<li><span class="pill g">done</span> Strip <code>conm&bsol;</code> from <code>src/providers/openai.ts</code> &mdash; build restored.</li>
+<li>Correct <code>test/policy/route.test.ts</code>: the fixture must record k2 as refused on a <em>third</em> model, not on SONNET, for the test&rsquo;s stated intent to hold.</li>
+<li>Correct the <code>renderHandoff</code> assertion in <code>test/agent/loop.test.ts</code> to match the shipped wording.</li>
+<li>Scope Gemini synthetic tool-call ids by <code>stepId</code>.</li>
+<li>Replace literal NULs with <code>&bsol;u0000</code> escapes.</li>
+<li>Then wire <code>extension.ts</code>. Nothing else matters until a user can start a task.</li>
+</ol>
+</section>
+<section id="s28"><h2><span class="n">28</span>Technical risks</h2><hr>
+<div class="scroll"><table>
+<thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td class="k">The thesis under-delivers: blind fallback rarely duplicates effects in practice</td><td>med</td><td><strong>critical</strong></td><td>Run the four-arm benchmark <em>early</em>. If arm B shows near-zero duplicates, the differentiator is crash-recovery rather than failover &mdash; still real, but the pitch must change. Learn this from your own harness.</td></tr>
+<tr><td class="k">Configuration burden loses users before value is seen</td><td><strong>high</strong></td><td>high</td><td>Declared capabilities are correct but hostile at onboarding. Ship a seeded, dated, user-confirmed catalogue and a two-provider quick-start.</td></tr>
+<tr><td class="k">Provider API drift breaks adapters</td><td><strong>high</strong></td><td>med</td><td>Decoders are string-testable. Keep golden-fixture tests per provider; treat wire changes as fixture updates.</td></tr>
+<tr><td class="k">Error strings change and the classifier mis-routes</td><td>high</td><td>med</td><td>Regex matching on prose is inherently fragile. Prefer status and error <em>codes</em>; keep the table-driven per-provider test the prior audit already recommends.</td></tr>
+<tr><td class="k">Fingerprint false positives from formatters / CRLF / generated files</td><td>med</td><td>high</td><td>Edge case #52. Excessive <code>ASK_USER</code> destroys the experience faster than a rare miss.</td></tr>
+<tr><td class="k">Git checkpoints slow on large repos</td><td>med</td><td>med</td><td>The failure that fills competitors&rsquo; issue trackers. Bound the work, degrade to no-checkpoint, never block the task.</td></tr>
+<tr><td class="k">Ledger growth over long tasks</td><td>med</td><td>low</td><td><code>STREAM_PROGRESS</code> dominates. Already non-syncing; add rotation.</td></tr>
+<tr><td class="k">Single-maintainer bus factor</td><td>high</td><td>med</td><td>The architecture is unusually legible &mdash; pure functions, headless tests, explicit invariants in comments. This is genuine mitigation.</td></tr>
+<tr><td class="k">Copilot rate limits make it useless as a target</td><td><strong>high</strong></td><td>low</td><td>Documented (&sect;19). Never an automatic fallback.</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="s29"><h2><span class="n">29</span>Legal and policy risks</h2><hr>
+<div class="scroll"><table>
+<thead><tr><th>Area</th><th>Position</th><th>Class</th></tr></thead>
+<tbody>
+<tr><td class="k">Provider API keys</td><td>User supplies their own; the extension is a client. Standard and unproblematic.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">Multiple keys per provider</td><td>Legitimate for billing separation. Do not market quota evasion (&sect;16).</td><td><span class="pill y">YELLOW</span></td></tr>
+<tr><td class="k">Claude Code subscription auth</td><td>Do not use Pro/Max credentials from a third-party client. API keys only.</td><td><span class="pill r">RED</span></td></tr>
+<tr><td class="k">Claude Code transcript format</td><td>Documented as internal, changes between releases. Do not parse.</td><td><span class="pill r">RED</span></td></tr>
+<tr><td class="k">Copilot via <code>vscode.lm</code></td><td>Supported API, consent-gated, user-initiated. But third-party agents face strict LLM rate limits, with official guidance to bring your own model for volume.</td><td><span class="pill y">YELLOW</span></td></tr>
+<tr><td class="k">Copilot BYOK</td><td>Copilot&rsquo;s own feature, not something to reimplement. Note it covers chat/utility but not completions, and is key-auth only.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">Marketplace policy</td><td>Workspace Trust declared and justified. No telemetry is the safest posture.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">Licence</td><td>MIT, present. Zero runtime dependencies &mdash; no transitive licence surface.</td><td><span class="pill g">GREEN</span></td></tr>
+<tr><td class="k">Naming / trademarks</td><td>Provider names used nominatively for compatibility. Avoid logos and any implication of endorsement.</td><td><span class="pill g">GREEN</span></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="s30"><h2><span class="n">30</span>Novelty score</h2><hr>
+<div class="scorecard">
+<div class="score"><div class="lab">Overall novelty</div><div class="val">7.5<span style="font-size:15px;color:var(--ink-3)">/10</span></div><div class="sub">High for the composition; low for any single feature</div></div>
+<div class="score"><div class="lab">Genuinely unoccupied</div><div class="val">6<span style="font-size:15px;color:var(--ink-3)">/13</span></div><div class="sub">All six depend on the ledger</div></div>
+<div class="score"><div class="lab">Commodity claims</div><div class="val">3<span style="font-size:15px;color:var(--ink-3)">/13</span></div><div class="sub">Retire from all messaging</div></div>
+<div class="score"><div class="lab">Academic support</div><div class="val">2</div><div class="sub">AgentChaos, ReliabilityBench &mdash; both 2026</div></div>
+</div>
+<p><strong>The defensible sentence, with nothing overstated:</strong></p>
+<div class="note okb"><p>&ldquo;Multi-provider failover is commodity. What is not commodity is a coding agent that records every side effect before it happens, so when a provider fails mid-task it can prove what did and did not land, hand a reconstructed &mdash; not replayed &mdash; state to a different model, and continue without re-running your file edits or your shell commands.&rdquo;</p></div>
+<p>Every clause is supported by code in this repository and unmatched by any system found in this survey. <span class="infer">inference on the unmatched claim; a survey is evidence of absence only in proportion to its breadth</span></p>
+</section>
+
+<section id="s31"><h2><span class="n">31</span>Feasibility score</h2><hr>
+<div class="scorecard">
+<div class="score"><div class="lab">Overall feasibility</div><div class="val">8.5<span style="font-size:15px;color:var(--ink-3)">/10</span></div><div class="sub">The hard part is already built and tested</div></div>
+<div class="score"><div class="lab">MVP already complete</div><div class="val">11<span style="font-size:15px;color:var(--ink-3)">/14</span></div><div class="sub">Remainder is wiring plus 3 gaps</div></div>
+<div class="score"><div class="lab">To demonstrable</div><div class="val">2&ndash;3<span style="font-size:15px;color:var(--ink-3)"> wk</span></div><div class="sub">Focused, one developer</div></div>
+<div class="score"><div class="lab">Backend required</div><div class="val">None</div><div class="sub">Through Phase 5</div></div>
+</div>
+<div class="scroll"><table>
+<thead><tr><th>Class</th><th>Features</th></tr></thead>
+<tbody>
+<tr><td><span class="pill g">GREEN</span></td><td>Provider adapters (Anthropic, OpenAI-compatible, Gemini, Azure signer); OpenAI-compatible endpoints as config; ledger; fingerprinting; git checkpoints; classification; routing; handoff; SecretStorage; timeline; NetworkMonitor; HealthMonitor; CostTracker; benchmark harness; extension wiring</td></tr>
+<tr><td><span class="pill y">YELLOW</span></td><td>OpenAI stream resumption (second request builder, ~5-min window, ordering constraint); Bedrock SigV4; <code>registerLanguageModelChatProvider</code>; terminal effect-log evidence; task-type routing; MCP (feasible but imports the &sect;18 threat surface); large-repo checkpoint performance</td></tr>
+<tr><td><span class="pill r">RED</span></td><td>Cross-provider stream resumption (you cannot resume A&rsquo;s stream on B &mdash; physically impossible, not merely unimplemented); Copilot as an automatic failover target (rate limits); replicating Claude Code&rsquo;s proprietary harness; parsing Claude Code transcripts; guaranteeing zero duplicate effects for arbitrary shell commands (unsafe operations are honestly unresolvable &mdash; the correct answer is to ask)</td></tr>
+</tbody></table></div>
+<div class="note warnb"><span class="lbl">The honest limit of the product</span>
+<p>For a shell command with external side effects, there is no sound way to infer completion after a crash. <code>ASK_USER</code> is not a gap in the design &mdash; it is the correct answer, and pretending otherwise is exactly the failure mode the project exists to avoid. The terminal effect-log proposal narrows the ambiguity with evidence; it does not eliminate it, and the docs should say so.</p></div>
+</section>
+
+<section id="s32"><h2><span class="n">32</span>Portfolio and competition potential</h2><hr>
+<div class="scorecard">
+<div class="score"><div class="lab">Portfolio strength</div><div class="val">9<span style="font-size:15px;color:var(--ink-3)">/10</span></div><div class="sub">Distributed-systems reasoning, visible</div></div>
+<div class="score"><div class="lab">Competition fit</div><div class="val">8<span style="font-size:15px;color:var(--ink-3)">/10</span></div><div class="sub">Needs the demo and the chart</div></div>
+<div class="score"><div class="lab">Mass adoption</div><div class="val">5<span style="font-size:15px;color:var(--ink-3)">/10</span></div><div class="sub">Config burden; invisible-when-working</div></div>
+</div>
+<h4>Why this reads well to an engineer</h4>
+<p>Most AI-coding side projects are prompt engineering wrapped in a webview. This is a write-ahead log, an idempotency scheme, a pure routing function, and an evidence-based recovery planner, with 381 headless tests and comments that argue for their own invariants. The comment in <code>handoff.ts</code> explaining why transcript replay is unsound is the kind of thing that gets a candidate hired &mdash; it demonstrates reasoning about correctness that the code alone cannot show.</p>
+<h4>What a submission needs that does not exist yet</h4>
+<ol class="body">
+<li><strong>A 60-second demo</strong>: task running, network killed mid-edit, provider switched, task completed, <code>git diff</code> showing the edit applied exactly once. That single recording carries the whole thesis.</li>
+<li><strong>The four-arm chart</strong> (&sect;21) &mdash; ideally with the recovery-rate metric the literature does not report.</li>
+<li><strong>A README that leads with the failure</strong>, not the feature list.</li>
+</ol>
+<div class="note"><span class="lbl">The adoption tension</span>
+<p>The product&rsquo;s value is invisible when everything works &mdash; it is insurance. Insurance is hard to demo and easy to skip. This is precisely why the failure-injection demo is not a nice-to-have: it is the only way to make the value visible in the ten seconds a reviewer gives you.</p></div>
+</section>
+
+<section id="s33"><h2><span class="n">33</span>Final recommendation</h2><hr>
+<h3>Positioning</h3>
+<p>Of the two candidates, <strong>&ldquo;Models can fail. Your task shouldn&rsquo;t.&rdquo;</strong> is stronger &mdash; and it is already the description in <code>package.json</code>. It names a failure the user has personally experienced, states the promise in four words, and implies the mechanism without overclaiming. &ldquo;Your coding task doesn&rsquo;t belong to one model&rdquo; is a statement about architecture; users do not have architecture problems, they have interrupted-work problems.</p>
+<p>&ldquo;Reliable AI coding infrastructure for VS Code&rdquo; works as the subtitle. Lead with the failure, follow with the category.</p>
+
+<h3>The seven decisions</h3>
+<ol class="body">
+<li><strong>Stop researching.</strong> The research is done and it says the design is sound. The binding constraint is that <code>extension.ts</code> cannot start a task.</li>
+<li><strong>Retire the commodity claims.</strong> Multi-provider, multi-key, cooldown, health routing, context fallback. LiteLLM, OpenRouter and Kilo have them. Leading with them invites the comparison you lose.</li>
+<li><strong>Lead with side-effect safety.</strong> It is the one thing nobody else has, and every high-novelty item depends on the same ledger.</li>
+<li><strong>Build the benchmark early, not last.</strong> It is your proof, your demo and your risk-check on the central thesis, all at once. Move it out of Phase 4 and run a crude version during Phase 1.</li>
+<li><strong>Add the three small gaps</strong> &mdash; NetworkMonitor, pre-call context check, <code>CONTENT_POLICY</code>. Roughly four days for a real reduction in task-ending failures.</li>
+<li><strong>Add stream resumption after the MVP ships.</strong> Genuinely better where offered, but it is one provider, a five-minute window, and an ordering constraint. Regeneration already works everywhere.</li>
+<li><strong>Cut MCP and subagents from v1.</strong> They consume the schedule and, for MCP, import the threat surface that undermines the positioning.</li>
+</ol>
+
+<div class="note okb"><span class="lbl">Verdict</span>
+<p>This is a strong project that is closer to done than the brief assumes. The architecture makes a real technical argument, holds up against everything found in this survey, and is validated in its central claim by two 2026 papers. The risk is not that it is unbuildable or unoriginal &mdash; it is that it stays a very good library that no one can run. Wire the extension, record the demo, publish the chart.</p></div>
+</section>
+</main></div></div>
+<footer><div class="wrap">
+<p><strong>Method.</strong> Live web research (Aug 2026) against official provider and VS&nbsp;Code documentation, project docs and issue trackers, and two peer-reviewed 2026 papers, cross-checked against a full read of this repository&rsquo;s <code>src/</code> and its 381-test suite. Claims are tagged <span class="fact">fact</span> where they rest on a cited source or on code in this repository, and <span class="infer">inference</span> where they are the author&rsquo;s judgement.</p>
+<p style="margin-top:14px"><strong>Known limits.</strong> Absence of a capability in a competitor is evidence from a survey, not proof. Closed-source products (Cursor, Windsurf, Copilot internals) were assessed from documentation and public reports only. Model line-ups, pricing and rate limits change monthly and are deliberately not tabulated here.</p>
+</div></footer>

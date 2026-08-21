@@ -1,0 +1,10 @@
+node_modules/
+out/
+*.vsix
+.vscode-test/
+*.log
+.DS_Store
+
+# Dev Host scratch workspace. It has its own nested git repo so checkpoint
+# behaviour can be exercised, which must not become a submodule of this one.
+.vscode/sandbox/

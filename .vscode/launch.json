@@ -1,0 +1,34 @@
+{
+  // Run configurations for the Extension Development Host.
+  //
+  // `preLaunchTask` is deliberately absent: `compile` is a plain `tsc` invocation
+  // with no watcher, so a task would either block the launch or silently use a
+  // stale build. Run `pnpm run compile` first, or use the watch script.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        // A second folder as the *subject* workspace, so the host has somewhere
+        // to open a task. CodeRelay stores ledgers per project and edits files in
+        // the workspace root, so testing against a folder is not optional.
+        "${workspaceFolder}/.vscode/sandbox"
+      ],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "sourceMaps": true
+    },
+    {
+      "name": "Run Extension (no folder open)",
+      "type": "extensionHost",
+      "request": "launch",
+      // The degraded path: no `storageUri`, so the views must explain that a task
+      // ledger belongs to a project rather than failing or showing an empty list.
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "sourceMaps": true
+    }
+  ]
+}

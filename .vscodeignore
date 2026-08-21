@@ -1,0 +1,54 @@
+# What ships is: out/src/** (the compiled extension), media/** (the activity bar
+# icon and the task view's stylesheet and client script), package.json,
+# README.md, CHANGELOG.md, LICENSE and icon.png. Everything below is build- or
+# development-time only.
+#
+# media/ is deliberately NOT excluded. The webview loads its stylesheet and
+# script from there through `asWebviewUri`, and the activity bar icon is
+# referenced from `contributes.viewsContainers` — so excluding it would produce a
+# VSIX whose UI is a blank panel with no icon.
+#
+# Nothing here is required at runtime. The extension has zero runtime
+# dependencies, reads its configuration from VS Code settings, and keeps
+# credentials in SecretStorage — so there is no data file, no .env and no
+# node_modules to carry.
+
+.git/**
+.github/**
+.gitignore
+.vscode/**
+.vscode-test/**
+
+# TypeScript sources and the test suite. The compiled output in out/src is what
+# runs; shipping the sources again would roughly double the package for no
+# runtime benefit.
+src/**
+test/**
+out/test/**
+tsconfig.json
+tsconfig.build.json
+**/*.ts
+**/*.map
+
+# Dependency tree. Packaged with --no-dependencies because devDependencies are
+# the only dependencies; this is belt and braces.
+node_modules/**
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Research, audit and release material. Useful in the repository, noise in the VSIX.
+docs/**
+PUBLISHING.md
+
+# Never package secrets or local environment files, whatever else changes here.
+.env
+.env.*
+*.pem
+*.key
+
+# Build artefacts
+*.vsix
+coverage/**
+*.log
+.DS_Store

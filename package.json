@@ -1,0 +1,625 @@
+{
+  "name": "coderelay",
+  "displayName": "CodeRelay",
+  "description": "Models can fail. Your task shouldn't. Resumes AI coding tasks across providers after mid-stream failures, without re-running side effects.",
+  "version": "0.1.0",
+  "publisher": "bakullabs",
+  "author": "Bakul Labs",
+  "license": "MIT",
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#12161D",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BakulBd/CodeRelay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BakulBd/CodeRelay/issues"
+  },
+  "homepage": "https://github.com/BakulBd/CodeRelay#readme",
+  "engines": {
+    "vscode": "^1.96.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "AI",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "reliability",
+    "failover",
+    "multi-provider",
+    "anthropic",
+    "openai",
+    "gemini",
+    "openrouter"
+  ],
+  "main": "./out/src/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "CodeRelay writes files in the workspace and runs git to take rollback checkpoints, so it needs a trusted workspace. Ledgers from a previous session can be inspected once the workspace is trusted."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "CodeRelay runs git as a child process and resolves real filesystem paths to fingerprint files, so it cannot operate on a virtual filesystem."
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "coderelay",
+          "title": "CodeRelay",
+          "icon": "media/coderelay.svg"
+        }
+      ]
+    },
+    "views": {
+      "coderelay": [
+        {
+          "type": "webview",
+          "id": "coderelay.taskView",
+          "name": "CodeRelay",
+          "contextualTitle": "CodeRelay"
+        },
+        {
+          "id": "coderelay.tasksView",
+          "name": "Tasks",
+          "icon": "media/coderelay.svg",
+          "contextualTitle": "CodeRelay Tasks",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "coderelay.changesView",
+          "name": "Changes",
+          "icon": "media/coderelay.svg",
+          "contextualTitle": "CodeRelay Changes",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "coderelay.modelsView",
+          "name": "Models",
+          "icon": "media/coderelay.svg",
+          "contextualTitle": "CodeRelay Models",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "coderelay.tasksView",
+        "contents": "No tasks yet.\n[Start a coding task](command:coderelay.startTask)\nCodeRelay records every step to disk, so a task survives a provider failure — or a closed window.",
+        "when": "workspaceFolderCount != 0"
+      },
+      {
+        "view": "coderelay.tasksView",
+        "contents": "Task ledgers belong to a project.\n[Open a Folder](command:vscode.openFolder)\nOpen a folder or workspace and CodeRelay will keep its execution record alongside it.",
+        "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "coderelay.changesView",
+        "contents": "No file changes yet.\nFiles the agent creates, edits or deletes appear here, with a diff against the checkpoint taken before the change."
+      },
+      {
+        "view": "coderelay.modelsView",
+        "contents": "Connect an AI provider.\n[Add a Provider](command:coderelay.addProvider)\n[Open Settings](command:coderelay.openSettings)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "coderelay.startTask",
+        "title": "Start Task",
+        "category": "CodeRelay",
+        "icon": "$(add)"
+      },
+      {
+        "command": "coderelay.resumeTask",
+        "title": "Resume Interrupted Task",
+        "category": "CodeRelay",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "coderelay.stopTask",
+        "title": "Stop Task",
+        "category": "CodeRelay",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "coderelay.resolveEscalation",
+        "title": "Resolve Pending Decision",
+        "category": "CodeRelay",
+        "icon": "$(question)"
+      },
+      {
+        "command": "coderelay.addProvider",
+        "title": "Add AI Provider",
+        "category": "CodeRelay",
+        "icon": "$(add)"
+      },
+      {
+        "command": "coderelay.addModel",
+        "title": "Add Model",
+        "category": "CodeRelay",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "coderelay.addCredential",
+        "title": "Add API Key",
+        "category": "CodeRelay",
+        "icon": "$(key)"
+      },
+      {
+        "command": "coderelay.testConnection",
+        "title": "Test Connection",
+        "category": "CodeRelay",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "coderelay.manageCredentials",
+        "title": "Manage API Keys",
+        "category": "CodeRelay"
+      },
+      {
+        "command": "coderelay.showTimeline",
+        "title": "Show Execution Timeline",
+        "category": "CodeRelay",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "coderelay.inspectLedger",
+        "title": "Inspect Task Ledger",
+        "category": "CodeRelay",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "coderelay.showLogs",
+        "title": "Show Logs",
+        "category": "CodeRelay",
+        "icon": "$(output)"
+      },
+      {
+        "command": "coderelay.showDiagnostics",
+        "title": "Show Diagnostics",
+        "category": "CodeRelay",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "coderelay.openSettings",
+        "title": "Open Settings",
+        "category": "CodeRelay",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "coderelay.focusTask",
+        "title": "Focus Task View",
+        "category": "CodeRelay"
+      },
+      {
+        "command": "coderelay.openTask",
+        "title": "Open Task",
+        "category": "CodeRelay"
+      },
+      {
+        "command": "coderelay.refreshViews",
+        "title": "Refresh",
+        "category": "CodeRelay",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "coderelay.deleteTask",
+        "title": "Delete Task Ledger",
+        "category": "CodeRelay",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "coderelay.openChange",
+        "title": "Review Change",
+        "category": "CodeRelay",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "coderelay.selectModel",
+        "title": "Select Model",
+        "category": "CodeRelay",
+        "icon": "$(check)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "coderelay.openTask",
+          "when": "false"
+        },
+        {
+          "command": "coderelay.deleteTask",
+          "when": "false"
+        },
+        {
+          "command": "coderelay.openChange",
+          "when": "false"
+        },
+        {
+          "command": "coderelay.selectModel",
+          "when": "false"
+        },
+        {
+          "command": "coderelay.refreshViews",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "coderelay.startTask",
+          "when": "view == coderelay.tasksView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "coderelay.refreshViews",
+          "when": "view == coderelay.tasksView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "coderelay.openSettings",
+          "when": "view == coderelay.tasksView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "coderelay.showTimeline",
+          "when": "view == coderelay.changesView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "coderelay.addProvider",
+          "when": "view == coderelay.modelsView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "coderelay.addCredential",
+          "when": "view == coderelay.modelsView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "coderelay.refreshViews",
+          "when": "view == coderelay.modelsView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "coderelay.addModel",
+          "when": "view == coderelay.modelsView",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "coderelay.manageCredentials",
+          "when": "view == coderelay.modelsView",
+          "group": "1_keys@1"
+        },
+        {
+          "command": "coderelay.showLogs",
+          "when": "view == coderelay.tasksView",
+          "group": "9_diagnostics@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "coderelay.resumeTask",
+          "when": "view == coderelay.tasksView && viewItem =~ /^coderelay.task.resumable/",
+          "group": "inline@1"
+        },
+        {
+          "command": "coderelay.showTimeline",
+          "when": "view == coderelay.tasksView && viewItem =~ /^coderelay.task/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "coderelay.inspectLedger",
+          "when": "view == coderelay.tasksView && viewItem =~ /^coderelay.task/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "coderelay.resolveEscalation",
+          "when": "view == coderelay.tasksView && viewItem =~ /^coderelay.task.awaiting/",
+          "group": "2_act@1"
+        },
+        {
+          "command": "coderelay.deleteTask",
+          "when": "view == coderelay.tasksView && viewItem =~ /^coderelay.task/",
+          "group": "9_destructive@1"
+        },
+        {
+          "command": "coderelay.selectModel",
+          "when": "view == coderelay.modelsView && viewItem == coderelay.model",
+          "group": "inline@1"
+        },
+        {
+          "command": "coderelay.addModel",
+          "when": "view == coderelay.modelsView && viewItem == coderelay.provider",
+          "group": "inline@1"
+        },
+        {
+          "command": "coderelay.testConnection",
+          "when": "view == coderelay.modelsView && viewItem == coderelay.model",
+          "group": "1_verify@1"
+        },
+        {
+          "command": "coderelay.addCredential",
+          "when": "view == coderelay.modelsView && viewItem == coderelay.provider",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "coderelay.testConnection",
+          "when": "view == coderelay.modelsView && viewItem == coderelay.provider",
+          "group": "1_setup@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "coderelay.startTask",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "!terminalFocus"
+      },
+      {
+        "command": "coderelay.focusTask",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "!terminalFocus"
+      }
+    ],
+    "configuration": {
+      "title": "CodeRelay",
+      "properties": {
+        "coderelay.providers": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "API endpoints CodeRelay may use. An endpoint is a configuration row rather than built-in support, so any OpenAI-compatible service — OpenRouter, NVIDIA, Azure OpenAI, a local server — works without a code change. See the [setup guide](https://github.com/BakulBd/CodeRelay#configuration).\n\n**API keys are never stored here.** Use `CodeRelay: Add API Key`, which writes to the OS keychain through VS Code SecretStorage.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "baseUrl"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Your name for this endpoint. Keys are stored against it and it appears in the execution ledger, so it must be unique and stable."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "anthropic",
+                  "openai",
+                  "gemini"
+                ],
+                "markdownDescription": "The wire protocol, not the vendor. Use `openai` for anything that speaks Chat Completions, including OpenRouter, NVIDIA, Azure OpenAI, vLLM, Ollama and LM Studio.",
+                "enumDescriptions": [
+                  "Anthropic Messages API.",
+                  "OpenAI Chat Completions, and every service that speaks it.",
+                  "Google Gemini generateContent."
+                ]
+              },
+              "baseUrl": {
+                "type": "string",
+                "pattern": "^https?://",
+                "markdownDescription": "Origin and base path, without the endpoint suffix. For example `https://api.openai.com/v1`, `https://openrouter.ai/api/v1`, or `http://localhost:11434/v1`.",
+                "examples": [
+                  "https://api.anthropic.com",
+                  "https://api.openai.com/v1",
+                  "https://openrouter.ai/api/v1",
+                  "https://generativelanguage.googleapis.com",
+                  "http://localhost:11434/v1"
+                ]
+              },
+              "auth": {
+                "type": "string",
+                "enum": [
+                  "bearer",
+                  "api-key-header",
+                  "none"
+                ],
+                "default": "bearer",
+                "markdownDescription": "How the credential is presented. `bearer` sends `Authorization: Bearer`, `api-key-header` sends Azure OpenAI's `api-key` header, and `none` is for a local endpoint that does not authenticate.",
+                "enumDescriptions": [
+                  "Authorization: Bearer <key>. The default, and what most services expect.",
+                  "api-key: <key>. Azure OpenAI's scheme.",
+                  "No credential is sent. For a local endpoint; still needs a placeholder record from CodeRelay: Add API Key."
+                ]
+              },
+              "apiVersion": {
+                "type": "string",
+                "markdownDescription": "The API version: a query parameter for Azure OpenAI, and a path segment for Gemini (for example `v1beta`). Pinned here so a new version does not need an extension release.",
+                "examples": [
+                  "v1beta",
+                  "2024-10-21"
+                ]
+              },
+              "maxTokensField": {
+                "type": "string",
+                "enum": [
+                  "max_tokens",
+                  "max_completion_tokens",
+                  "none"
+                ],
+                "default": "max_tokens",
+                "markdownDescription": "Which field carries the output cap, for `openai`-kind endpoints. Not guessable: newer OpenAI models require `max_completion_tokens` and reject `max_tokens`, while most gateways accept only `max_tokens`. Getting it wrong is a 400 on every attempt, which failover cannot route around. `none` omits the cap and lets the endpoint apply its own default."
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "markdownDescription": "Extra request headers, such as OpenRouter's `HTTP-Referer` and `X-Title`. **Never put a credential here** — this value is stored in plain settings."
+              }
+            }
+          }
+        },
+        "coderelay.models": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Models CodeRelay may route between, and what each one can do.\n\nCapabilities are declared by you rather than guessed by the extension. Model line-ups change monthly, so a table shipped inside an extension goes stale and becomes a confident lie about a context window. CodeRelay records what it was told and gates failover on that — it never claims a model can do something.",
+          "items": {
+            "type": "object",
+            "required": [
+              "provider",
+              "model",
+              "contextWindow",
+              "maxOutput",
+              "toolCalling"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "type": "string",
+                "markdownDescription": "The `id` of an entry in `#coderelay.providers#`."
+              },
+              "model": {
+                "type": "string",
+                "description": "The model id exactly as the endpoint expects it. For Azure OpenAI this is the deployment name."
+              },
+              "contextWindow": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Total input tokens the model accepts. Used to decide when to compact rather than overflow."
+              },
+              "maxOutput": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Maximum tokens the model may generate in one turn."
+              },
+              "toolCalling": {
+                "type": "boolean",
+                "description": "Whether this model can call tools. Required rather than assumed: guessing true sends tool definitions to a model that cannot use them, and guessing false silently hides the model from the router."
+              },
+              "streaming": {
+                "type": "boolean",
+                "default": true
+              },
+              "parallelToolCalls": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether the model may request several tools in one turn."
+              },
+              "vision": {
+                "type": "boolean",
+                "default": false
+              },
+              "reasoning": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "implicit",
+                  "explicit"
+                ],
+                "default": "none",
+                "description": "Whether the model reasons before answering, and whether that reasoning is visible in the stream."
+              },
+              "structuredOutput": {
+                "type": "boolean",
+                "default": false
+              },
+              "costPerMTokIn": {
+                "type": "number",
+                "minimum": 0,
+                "description": "USD per million input tokens. Only used to break ties between otherwise equal failover targets."
+              },
+              "costPerMTokOut": {
+                "type": "number",
+                "minimum": 0,
+                "description": "USD per million output tokens."
+              }
+            }
+          }
+        },
+        "coderelay.requireToolCalling": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Only route to models that can call tools. Every CodeRelay tool reads or writes files, so a model without tool calling cannot do the work — it can only narrate edits it never made. Turn this off only to use CodeRelay for read-only analysis."
+        },
+        "coderelay.minContextWindow": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Exclude models whose declared context window is smaller than this. 0 means no minimum."
+        },
+        "coderelay.checkpoints": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Snapshot the workspace with git before each file-modifying step, so any step can be inspected or reverted.\n\nSafe to leave on. Snapshots are unreachable objects under `refs/coderelay/`, written through a private index. CodeRelay never touches `HEAD`, a branch, your staging area, or your working tree, and never creates a commit on a branch. Automatically inactive when the workspace is not a git repository."
+        },
+        "coderelay.maxTurns": {
+          "type": "number",
+          "default": 32,
+          "minimum": 1,
+          "description": "Stop a task after this many model turns. A backstop against a loop that makes no progress, not a quality setting."
+        },
+        "coderelay.connectTimeoutSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "markdownDescription": "Give up on an attempt if the provider has not sent response headers within this many seconds, and treat it as a transient failure that failover can route around.\n\nWithout a limit, an endpoint that accepts the connection and then never answers leaves the task waiting indefinitely — the one failure no retry policy can detect. `0` disables the limit, which is only sensible for a local endpoint."
+        },
+        "coderelay.idleTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 0,
+          "markdownDescription": "Give up on an attempt if a response that had started streaming goes this many seconds without sending anything further.\n\nMeasured between chunks rather than over the whole response, and any traffic counts — including the keep-alive comments providers send while a model is still thinking — so a slow answer is not mistaken for a dead connection. Generous by default because a reasoning model can legitimately pause for a long time. `0` disables the limit."
+        },
+        "coderelay.commands": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Let the agent run shell commands in the workspace, so it can build, test, type-check and lint its own work.\n\nOff by default. A command is the one tool whose effect CodeRelay cannot verify from the workspace afterwards, so turning this on is a deliberate choice rather than a default. When it is on, `#coderelay.permissionMode#` decides what runs without asking — and a destructive command asks in every mode."
+        },
+        "coderelay.permissionMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "balanced",
+            "autonomous"
+          ],
+          "default": "balanced",
+          "markdownDescription": "How much the agent may run without asking. Only applies when `#coderelay.commands#` is on.",
+          "enumDescriptions": [
+            "Read-only. Commands that could change anything are refused, not queued behind a prompt.",
+            "Ordinary development commands run. Anything irreversible asks first.",
+            "Everything runs except the irreversible shapes, which always ask."
+          ]
+        },
+        "coderelay.commandTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000,
+          "markdownDescription": "How long a single command may run before it is killed, in milliseconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./tsconfig.build.json",
+    "compile": "tsc -p ./tsconfig.build.json",
+    "watch": "tsc -p . --watch",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "tsc -p . && node --test \"out/test/**/*.test.js\"",
+    "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
+    "package": "npm run clean && npm run typecheck && npm run test && npm run clean && npm run compile && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run clean && npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/vscode": "1.96.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "5.7.3"
+  }
+}
