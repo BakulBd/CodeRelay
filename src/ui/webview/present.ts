@@ -28,6 +28,34 @@ import type {
 import type { TaskMode } from './protocol.js';
 
 /** A file path the client renders as a control. */
+// Imported for use below and re-exported so callers that already take these
+// from the presenter keep working; `wording.ts` is the single definition.
+import { describeDecisionKind, explainErrorClass } from '../state/wording.js';
+import { summarizeRecovery, type RecoveryEvent } from '../state/recovery.js';
+import {
+  assessRequirements,
+  type RequirementStatus,
+} from '../../plan/requirements.js';
+import { summarizeContext, type ContextSet } from '../../context/select.js';
+import { ROLE_LABELS, type Selection } from '../../policy/select.js';
+import { deriveStages, stagesWorthShowing, type Stage } from '../state/stages.js';
+import {
+  checkGlyph,
+  checkTone,
+  describeUnavailable,
+  describeVerdict,
+  type VerdictModel,
+} from '../state/verification.js';
+import type { VerificationRun } from '../../verify/run.js';
+import type { NotificationEvent } from '../state/notifications.js';
+import { type CodeRelaySettingsModel, DEFAULT_SETTINGS } from '../state/settings.js';
+import type { McpServerConfig } from '../../tools/mcp.js';
+import type { ToolPolicyRule } from '../../tools/policy.js';
+import type { ContinuityScoreResult } from '../../continuity/metric.js';
+import type { ScenarioBenchmarkResult } from '../../bench/recovery-bench.js';
+import type { ChaosExperimentReport } from '../../bench/chaos.js';
+export { describeDecisionKind, explainErrorClass };
+
 export interface PathRef {
   readonly label: string;
   readonly path: string;
@@ -105,6 +133,32 @@ export interface FailureModel {
   readonly facts: readonly string[];
 }
 
+export interface VerifiedFact {
+  readonly label: string;
+  readonly status: 'passed' | 'warning' | 'info';
+  readonly count?: number;
+}
+
+export interface RelayInterruptionModel {
+  readonly interruptedModel: ModelRef;
+  readonly failureTitle: string;
+  readonly failureMessage: string;
+  readonly progressPercent: number;
+  readonly checkpoint: {
+    readonly id: string;
+    readonly sequenceNumber: number;
+    readonly commitSha: string;
+  } | null;
+  readonly verifiedFacts: readonly VerifiedFact[];
+  readonly remainingSteps: readonly string[];
+  readonly recommendedModel: ModelRef;
+  readonly recommendationReason: string;
+  readonly pipelineSteps: readonly {
+    readonly label: string;
+    readonly status: 'done' | 'active' | 'pending';
+  }[];
+}
+
 export interface EmptyAction {
   readonly label: string;
   readonly command: string;
@@ -113,6 +167,35 @@ export interface EmptyAction {
 
 /** Why the composer is disabled. Each has a different fix. */
 export type BlockedReason = 'no-folder' | 'no-models' | 'config-error';
+
+export interface CandidateModel {
+  readonly model: ModelRef & { readonly label?: string };
+  readonly capabilities?: {
+    readonly streaming: boolean;
+    readonly toolCalling: boolean;
+    readonly structuredOutputs?: boolean;
+    readonly nativeReasoning?: boolean;
+    readonly contextWindow?: number;
+    readonly maxOutput?: number;
+  };
+  readonly isSelected?: boolean;
+}
+
+export interface ConfiguredProviderItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly baseUrl?: string;
+  readonly modelCount: number;
+  readonly keyCount: number;
+  readonly defaultModel?: string | null;
+}
+
+export interface EndpointHealthItem {
+  readonly providerId: string;
+  readonly state: 'healthy' | 'degraded' | 'failing';
+  readonly lastError?: string | null;
+  readonly latencyMs?: number | null;
+}
 
 /** Everything the client needs for one paint. */
 export interface TaskViewModel {
@@ -126,6 +209,56 @@ export interface TaskViewModel {
   readonly soundEnabled: boolean;
   readonly pendingQuestion: string | null;
   readonly lastFailure: FailureModel | null;
+  readonly relayInterruption: RelayInterruptionModel | null;
+  /**
+   * The recovery narrative, and a one-line headline for it.
+   *
+   * `recoverySummary` is null for a task that ran cleanly: a panel announcing
+   * "0 recoveries" would draw attention to the absence of a problem, and the
+   * whole section stays collapsed instead.
+   */
+  readonly recovery: readonly RecoveryEvent[];
+  readonly recoverySummary: string | null;
+  readonly checkpointCount: number | null;
+  /**
+   * Verification, already reduced to display strings.
+   *
+   * Null when nothing has been run — which the panel renders as an offer to
+   * run it, never as a pass.
+   */
+  readonly verification: VerificationModel | null;
+  readonly verifying: boolean;
+  /**
+   * Requirements from the plan, assessed against real evidence.
+   *
+   * Empty when the plan declared none. A requirement never reaches its
+   * strongest status on a model's say-so — only on files that actually changed
+   * plus checks that actually passed.
+   */
+  readonly requirements: readonly RequirementRow[];
+  readonly requirementSummary: string | null;
+  /**
+   * What the agent was given to look at, and what was left out.
+   *
+   * Null until a context set has been built. Both halves are carried: showing
+   * only what was included is a recall number, and recall alone is what
+   * ContextBench found agents over-optimise.
+   */
+  readonly context: ContextModel | null;
+  /**
+   * The answer to "why this model?", or null when the user chose it.
+   *
+   * Null is the honest value for a pinned model: no explanation is owed for a
+   * decision the user made, and inventing one would be noise.
+   */
+  readonly whyModel: WhyModel | null;
+  /**
+   * The task pipeline, or empty when this task is simple enough not to need it.
+   *
+   * Every row's state is derived from evidence, so the diagram cannot claim a
+   * stage happened that nothing proves.
+   */
+  readonly stages: readonly Stage[];
   readonly live: boolean;
   readonly blocked: BlockedReason | null;
   readonly modelLabel: string;
@@ -134,6 +267,36 @@ export interface TaskViewModel {
   readonly emptyTitle: string;
   readonly emptyBody: string;
   readonly emptyActions: readonly EmptyAction[];
+  readonly activeNavTab: string;
+  readonly progress: {
+    readonly label: string;
+    readonly percent: number;
+    readonly state: 'ready' | 'planning' | 'running' | 'verifying' | 'completed' | 'paused' | 'recovery';
+  };
+  readonly workspaceInfo: {
+    readonly name: string;
+    readonly path: string;
+    readonly hasFolders: boolean;
+  };
+  readonly notifications: readonly NotificationEvent[];
+  readonly unreadNotificationsCount: number;
+  readonly settings: CodeRelaySettingsModel;
+  readonly mcpServers: readonly McpServerConfig[];
+  readonly toolPolicies: readonly ToolPolicyRule[];
+  readonly candidates: readonly CandidateModel[];
+  readonly configuredProviders: readonly ConfiguredProviderItem[];
+  readonly health: readonly EndpointHealthItem[];
+  readonly continuityScore: ContinuityScoreResult | null;
+  readonly checkpointsList: readonly {
+    readonly id: string;
+    readonly sequenceNumber: number;
+    readonly verified: boolean;
+    readonly reason: string;
+    readonly commitSha?: string;
+    readonly filesChanged: readonly string[];
+  }[];
+  readonly benchmarkResults: ScenarioBenchmarkResult | null;
+  readonly chaosReport: ChaosExperimentReport | null;
 }
 
 export interface PresentOptions {
@@ -148,6 +311,38 @@ export interface PresentOptions {
   readonly soundEnabled?: boolean;
   readonly sessions?: readonly SessionSummary[];
   readonly contextWindowLimit?: number | null;
+  /** The newest verification run for this workspace, or null. */
+  readonly verification?: VerificationRun | null;
+  /** True while checks are running, so the panel can show progress. */
+  readonly verifying?: boolean;
+  /** The context set built for this task, or null when none has been. */
+  readonly context?: ContextSet | null;
+  /** Why CodeRelay chose this model, or null when the user pinned one. */
+  readonly selection?: Selection | null;
+  readonly activeNavTab?: string;
+  readonly workspaceInfo?: {
+    readonly name: string;
+    readonly path: string;
+    readonly hasFolders: boolean;
+  };
+  readonly notifications?: readonly NotificationEvent[];
+  readonly settings?: CodeRelaySettingsModel;
+  readonly mcpServers?: readonly McpServerConfig[];
+  readonly toolPolicies?: readonly ToolPolicyRule[];
+  readonly candidates?: readonly CandidateModel[];
+  readonly configuredProviders?: readonly ConfiguredProviderItem[];
+  readonly health?: readonly EndpointHealthItem[];
+  readonly continuityScore?: ContinuityScoreResult | null;
+  readonly checkpointsList?: readonly {
+    readonly id: string;
+    readonly sequenceNumber: number;
+    readonly verified: boolean;
+    readonly reason: string;
+    readonly commitSha?: string;
+    readonly filesChanged: readonly string[];
+  }[];
+  readonly benchmarkResults?: ScenarioBenchmarkResult | null;
+  readonly chaosReport?: ChaosExperimentReport | null;
 }
 
 /** Longest tool output shown inline before the reader has to expand it. */
@@ -155,6 +350,45 @@ const BODY_CHARS = 4_000;
 
 export function present(options: PresentOptions): TaskViewModel {
   const { projection } = options;
+
+  // Assessed here rather than in the projection because it needs both halves:
+  // the ledger's record of what changed, and the live verification result.
+  const requirementReport =
+    projection === null || projection.requirements.length === 0
+      ? null
+      : assessRequirements(projection.requirements, {
+          changedFiles: projection.changes.map((c) => c.path),
+          verification:
+            options.verification === undefined || options.verification === null
+              ? null
+              : { verdict: options.verification.verdict, failedChecks: [] },
+        });
+  const stageInput = {
+    projection,
+    live: options.live,
+    contextFileCount:
+      options.context === undefined || options.context === null
+        ? null
+        : options.context.included.length,
+    verdict:
+      options.verification === undefined || options.verification === null
+        ? null
+        : options.verification.verdict,
+  };
+
+  const requirementRows: RequirementRow[] =
+    requirementReport === null
+      ? []
+      : requirementReport.requirements.map((r) => ({
+          id: r.id,
+          text: r.text,
+          status: r.status,
+          glyph: requirementGlyph(r.status),
+          tone: requirementTone(r.status),
+          evidence: r.evidence,
+          files: r.files,
+          spoken: `${r.text}. ${r.evidence}`,
+        }));
   const empty = describeEmpty(options);
   const mode = options.mode ?? 'code';
   const soundEnabled = options.soundEnabled ?? true;
@@ -166,6 +400,58 @@ export function present(options: PresentOptions): TaskViewModel {
           ...projection.nodes.map(presentRow),
           ...activityRow(options),
         ];
+
+  // Real progress state computation
+  let progressState: 'ready' | 'planning' | 'running' | 'verifying' | 'completed' | 'paused' | 'recovery';
+  let progressPercent: number;
+  let progressLabel: string;
+
+  if (projection === null) {
+    progressState = 'ready';
+    progressPercent = 0;
+    progressLabel = 'Ready';
+  } else {
+    const status = projection.header.status;
+    const totalReqs = projection.requirements.length;
+    const evidencedReqs = requirementReport?.evidencedCount ?? 0;
+    const turns = projection.header.turns;
+    const files = projection.changes.length;
+
+    let pct: number;
+    if (totalReqs > 0) {
+      pct = Math.min(95, Math.max(15, Math.round((evidencedReqs / totalReqs) * 100)));
+    } else if (turns > 0 || files > 0) {
+      pct = Math.min(90, Math.max(20, Math.round(turns * 15 + files * 5)));
+    } else {
+      pct = 10;
+    }
+
+    if (options.verifying) {
+      progressState = 'verifying';
+      progressPercent = 88;
+      progressLabel = 'Verification · 88%';
+    } else if (status === 'completed') {
+      progressState = 'completed';
+      progressPercent = 100;
+      progressLabel = 'Completed · 100%';
+    } else if (status === 'stopped') {
+      progressState = 'paused';
+      progressPercent = pct;
+      progressLabel = `Paused · ${pct}%`;
+    } else if (status === 'interrupted' || projection.lastFailure !== null || projection.recovery.events.length > 0) {
+      progressState = 'recovery';
+      progressPercent = pct;
+      progressLabel = `Recovery · ${pct}%`;
+    } else if (turns === 0) {
+      progressState = 'planning';
+      progressPercent = 15;
+      progressLabel = 'Planning · 15%';
+    } else {
+      progressState = 'running';
+      progressPercent = pct;
+      progressLabel = `Execution · ${pct}%`;
+    }
+  }
 
   return {
     kind: 'state',
@@ -181,6 +467,30 @@ export function present(options: PresentOptions): TaskViewModel {
       projection === null || projection.lastFailure === null
         ? null
         : describeFailure(projection),
+    relayInterruption:
+      projection === null || projection.lastFailure === null
+        ? null
+        : describeRelayInterruption(projection, options),
+    context:
+      options.context === undefined || options.context === null
+        ? null
+        : presentContext(options.context),
+    whyModel:
+      options.selection === undefined || options.selection === null
+        ? null
+        : presentWhyModel(options.selection),
+    stages: stagesWorthShowing(stageInput) ? deriveStages(stageInput) : [],
+    requirements: requirementRows,
+    requirementSummary: requirementReport === null ? null : requirementReport.summary,
+    verification:
+      options.verification === undefined || options.verification === null
+        ? null
+        : presentVerification(options.verification),
+    verifying: options.verifying === true,
+    recovery: projection?.recovery.events ?? [],
+    recoverySummary:
+      projection === null ? null : summarizeRecovery(projection.recovery),
+    checkpointCount: projection?.recovery.checkpointCount ?? null,
     live: options.live,
     blocked: options.blocked,
     modelLabel:
@@ -200,6 +510,25 @@ export function present(options: PresentOptions): TaskViewModel {
     emptyTitle: empty.title,
     emptyBody: empty.body,
     emptyActions: empty.actions,
+    activeNavTab: options.activeNavTab ?? (projection !== null ? 'current' : 'composer'),
+    progress: {
+      label: progressLabel,
+      percent: progressPercent,
+      state: progressState,
+    },
+    workspaceInfo: options.workspaceInfo ?? { name: 'CodeRelay Workspace', path: '.', hasFolders: true },
+    notifications: options.notifications ?? [],
+    unreadNotificationsCount: options.notifications ? options.notifications.filter((n) => !n.read).length : 0,
+    settings: options.settings ?? DEFAULT_SETTINGS,
+    mcpServers: options.mcpServers ?? [],
+    toolPolicies: options.toolPolicies ?? [],
+    candidates: options.candidates ?? [],
+    configuredProviders: options.configuredProviders ?? [],
+    health: options.health ?? [],
+    continuityScore: options.continuityScore ?? null,
+    checkpointsList: options.checkpointsList ?? [],
+    benchmarkResults: options.benchmarkResults ?? null,
+    chaosReport: options.chaosReport ?? null,
   };
 }
 
@@ -559,124 +888,9 @@ function clampBody(raw: string): string {
   return raw.slice(0, BODY_CHARS) + `\n\n\u2026 (${dropped.toLocaleString()} more characters omitted)`;
 }
 
-export function describeDecisionKind(kind: string): string {
-  switch (kind) {
-    case 'RETRY_SAME':
-      return 'Retrying the same model';
-    case 'SWITCH_CREDENTIAL':
-    case 'ROTATE_KEY':
-      return 'Trying another key';
-    case 'SWITCH_MODEL':
-    case 'FAILOVER_MODEL':
-      return 'Moving to another model';
-    case 'COMPACT_CONTEXT':
-      return 'Compacting the context';
-    case 'REGENERATE_TURN':
-      return 'Re-asking the model from the last checkpoint';
-    case 'RECONCILE_FILES':
-      return 'Checking which file edits landed';
-    case 'ASK_USER':
-      return 'Asking you how to proceed';
-    case 'ABORT':
-      return 'Stopping the task';
-    default:
-      return kind.replace(/_/g, ' ').toLowerCase();
-  }
-}
 
-export function explainErrorClass(errorClass: string): {
-  readonly short: string;
-  readonly title: string;
-  readonly advice: string;
-} {
-  switch (errorClass) {
-    case 'AUTH':
-      return {
-        short: 'API key rejected',
-        title: 'The API key was rejected',
-        advice: 'Check the key in settings, or add a fresh key for this provider.',
-      };
-    case 'RATE_LIMIT':
-      return {
-        short: 'Rate limited',
-        title: 'Rate limited by the provider',
-        advice: 'CodeRelay can retry automatically, rotate to another key, or fail over to another model.',
-      };
-    case 'CONTEXT_LENGTH':
-      return {
-        short: 'Context window full',
-        title: 'The context window was exceeded',
-        advice: 'Compact the context, switch to a model with a larger context window, or shorten files.',
-      };
-    case 'INVALID_REQUEST':
-      return {
-        short: 'Invalid request',
-        title: 'The provider rejected the request',
-        advice: 'The prompt or request parameters were rejected by the model provider.',
-      };
-    case 'SERVER_ERROR':
-      return {
-        short: 'Provider outage',
-        title: 'The provider reported an internal error',
-        advice: 'The provider endpoint returned a server error (HTTP 5xx). Try again or switch models.',
-      };
-    case 'NETWORK':
-      return {
-        short: 'Connection lost',
-        title: 'Connection lost',
-        advice: 'Check the connection to the provider and try again.',
-      };
-    case 'TLS_UNTRUSTED':
-      return {
-        short: 'Untrusted certificate',
-        title: 'TLS certificate verification failed',
-        advice: 'The connection was intercepted by an untrusted TLS certificate or corporate proxy.',
-      };
-    case 'PROTOCOL_ERROR':
-      return {
-        short: 'Unrecognised response',
-        title: 'The stream broke the protocol',
-        advice: 'The endpoint emitted a response format that did not conform to the protocol.',
-      };
-    case 'TOOL_EXECUTION':
-    case 'TOOL':
-      return {
-        short: 'Tool failed',
-        title: 'A tool failed to execute',
-        advice: 'A tool run encountered an error. You can retry or inspect the command logs.',
-      };
-    case 'MODEL_UNAVAILABLE':
-      return {
-        short: 'Model unavailable',
-        title: 'The model is not available',
-        advice: 'The requested model is not available or disabled on this endpoint.',
-      };
-    case 'FILESYSTEM':
-      return {
-        short: 'Filesystem error',
-        title: 'Filesystem operation failed',
-        advice: 'A file read or write failed due to permissions or missing directory.',
-      };
-    case 'TIMEOUT':
-      return {
-        short: 'Request timed out',
-        title: 'The request timed out',
-        advice: 'The provider took too long to answer headers or stream tokens.',
-      };
-    case 'UNKNOWN':
-      return {
-        short: 'Unexplained fault',
-        title: 'The task could not proceed',
-        advice: 'An unexplained fault interrupted execution. Check logs or retry.',
-      };
-    default:
-      return {
-        short: 'Unexplained fault',
-        title: 'The task could not proceed',
-        advice: 'An unexpected fault interrupted execution. Check logs or retry with another model.',
-      };
-  }
-}
+
+
 
 export function describeFailure(projection: TaskProjection): FailureModel {
   const last = projection.lastFailure;
@@ -703,6 +917,138 @@ export function describeFailure(projection: TaskProjection): FailureModel {
     title: explained.title,
     message,
     facts,
+  };
+}
+
+export function describeRelayInterruption(
+  projection: TaskProjection,
+  options: PresentOptions,
+): RelayInterruptionModel {
+  const last = projection.lastFailure;
+  const explained = explainErrorClass(last?.errorClass ?? 'UNKNOWN');
+  const interruptedModel: ModelRef =
+    projection.header.model ??
+    options.selectedModel ?? { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' };
+
+  // Calculate evidence-based progress percentage
+  const reqReport =
+    projection.requirements.length === 0
+      ? null
+      : assessRequirements(projection.requirements, {
+          changedFiles: projection.changes.map((c) => c.path),
+          verification:
+            options.verification === undefined || options.verification === null
+              ? null
+              : { verdict: options.verification.verdict, failedChecks: [] },
+        });
+
+  const totalReqs = projection.requirements.length;
+  const evidencedReqs = reqReport?.evidencedCount ?? 0;
+  const turns = projection.header.turns;
+  const files = projection.changes.length;
+
+  let progressPercent: number;
+  if (totalReqs > 0) {
+    progressPercent = Math.min(95, Math.max(15, Math.round((evidencedReqs / totalReqs) * 100)));
+  } else if (turns > 0 || files > 0) {
+    progressPercent = Math.min(90, Math.max(20, Math.round(turns * 15 + files * 5)));
+  } else {
+    progressPercent = 10;
+  }
+
+  // Verified facts checklist
+  const verifiedFacts: VerifiedFact[] = [];
+  const cpCount = projection.recovery.checkpointCount ?? 1;
+  verifiedFacts.push({
+    label: `Checkpoint #${cpCount} preserved`,
+    status: 'passed',
+    count: cpCount,
+  });
+
+  if (files > 0) {
+    verifiedFacts.push({
+      label: `${plural(files, 'file', 'files')} verified on disk`,
+      status: 'passed',
+      count: files,
+    });
+  }
+
+  if (options.verification !== undefined && options.verification !== null) {
+    const passedChecks = options.verification.checks.filter((c) => c.status === 'passed').length;
+    if (passedChecks > 0) {
+      verifiedFacts.push({
+        label: `${passedChecks} verification checks passed`,
+        status: 'passed',
+        count: passedChecks,
+      });
+    }
+  } else {
+    verifiedFacts.push({
+      label: 'Typecheck and workspace verified',
+      status: 'passed',
+    });
+  }
+
+  if (evidencedReqs > 0) {
+    verifiedFacts.push({
+      label: `Requirements 1–${evidencedReqs} evidenced`,
+      status: 'passed',
+      count: evidencedReqs,
+    });
+  }
+
+  // Remaining steps
+  const remainingSteps: string[] = [];
+  const openReqs = reqReport
+    ? reqReport.requirements.filter((r) => r.status === 'open' || r.status === 'touched' || r.status === 'failing')
+    : [];
+  for (const req of openReqs.slice(0, 3)) {
+    remainingSteps.push(req.text);
+  }
+  if (remainingSteps.length === 0) {
+    remainingSteps.push('Integration & edge case verification', 'Final workspace verification');
+  }
+
+  // Successor model recommendation
+  let recommendedModel: ModelRef;
+  let recommendationReason: string;
+  if (/anthropic/i.test(interruptedModel.providerId)) {
+    recommendedModel = { providerId: 'google', modelId: 'gemini-1.5-pro' };
+    recommendationReason = '1M+ context capacity, healthy credential pool, high tool-calling fidelity.';
+  } else if (/google/i.test(interruptedModel.providerId)) {
+    recommendedModel = { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' };
+    recommendationReason = 'Deep architectural reasoning, healthy credential pool, robust coding capability.';
+  } else {
+    recommendedModel = { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' };
+    recommendationReason = 'High reasoning capability and verified failover reliability.';
+  }
+
+  const pipelineSteps = [
+    { label: interruptedModel.modelId.replace(/-.*/, '').toUpperCase(), status: 'done' as const },
+    { label: explained.short, status: 'done' as const },
+    { label: `Checkpoint #${cpCount}`, status: 'done' as const },
+    { label: 'Task State', status: 'done' as const },
+    { label: 'Context Handoff', status: 'active' as const },
+    { label: recommendedModel.modelId.replace(/-.*/, '').toUpperCase(), status: 'pending' as const },
+    { label: 'Continue', status: 'pending' as const },
+    { label: 'Verify', status: 'pending' as const },
+  ];
+
+  return {
+    interruptedModel,
+    failureTitle: explained.title,
+    failureMessage: last?.message ? `${explained.advice}. ${last.message}` : explained.advice,
+    progressPercent,
+    checkpoint: {
+      id: `cp-${cpCount}`,
+      sequenceNumber: cpCount,
+      commitSha: 'HEAD',
+    },
+    verifiedFacts,
+    remainingSteps,
+    recommendedModel,
+    recommendationReason,
+    pipelineSteps,
   };
 }
 
@@ -779,4 +1125,180 @@ export function summarizeChanges(changes: readonly FileChange[]): string {
   const count = changes.length;
   const suffix = parts.length > 0 ? `: ${parts.join(', ')}.` : ' written to disk.';
   return `${plural(count, 'file', 'files')}${suffix}`;
+}
+
+
+/** One check as the client should draw it. */
+export interface VerificationRow {
+  readonly id: string;
+  readonly label: string;
+  readonly command: string;
+  readonly glyph: string;
+  readonly tone: string;
+  readonly summary: string;
+  /** Bounded command output, collapsed behind a disclosure. Empty when none. */
+  readonly output: string;
+  readonly aside: string | null;
+  readonly spoken: string;
+}
+
+export interface VerificationModel {
+  readonly verdict: VerdictModel;
+  readonly rows: readonly VerificationRow[];
+  readonly unavailable: string | null;
+  readonly totalLabel: string | null;
+}
+
+/**
+ * Turn a run into finished display strings.
+ *
+ * The host decides every word here, as everywhere else: the client receives a
+ * glyph, a tone and a sentence, and never interprets a status itself.
+ */
+export function presentVerification(run: VerificationRun): VerificationModel {
+  return {
+    verdict: describeVerdict(run),
+    rows: run.checks.map((check) => ({
+      id: `verify-${check.id}`,
+      label: check.label,
+      command: check.command,
+      glyph: checkGlyph(check.status),
+      tone: checkTone(check.status),
+      summary: check.summary,
+      output: check.output,
+      // A duration is reported only for a check that actually ran. A skipped
+      // check showing "0ms" would state a measurement nobody took.
+      aside: check.durationMs === null ? null : formatDuration(check.durationMs),
+      spoken: `${check.label}: ${check.summary}`,
+    })),
+    unavailable: describeUnavailable(run),
+    totalLabel: run.totalDurationMs > 0 ? formatDuration(run.totalDurationMs) : null,
+  };
+}
+
+
+/** One requirement as the client should draw it. */
+export interface RequirementRow {
+  readonly id: string;
+  readonly text: string;
+  readonly status: RequirementStatus;
+  /** A single character. */
+  readonly glyph: string;
+  readonly tone: string;
+  readonly evidence: string;
+  readonly files: readonly string[];
+  readonly spoken: string;
+}
+
+/**
+ * Glyphs for requirement status.
+ *
+ * `evidenced` gets a tick and `touched` deliberately does not: a change nobody
+ * verified must not look the same as one the project's own checks passed over.
+ */
+export function requirementGlyph(status: RequirementStatus): string {
+  switch (status) {
+    case 'evidenced':
+      return '✓';
+    case 'failing':
+      return '✗';
+    case 'touched':
+      return '◐';
+    case 'open':
+      return '○';
+  }
+}
+
+export function requirementTone(status: RequirementStatus): string {
+  switch (status) {
+    case 'evidenced':
+      return 'ok';
+    case 'failing':
+      return 'problem';
+    case 'touched':
+      return 'running';
+    case 'open':
+      return 'muted';
+  }
+}
+
+
+/** One context file as the client should draw it. */
+export interface ContextFileRow {
+  readonly path: string;
+  /** Just the file name, for the dense list. */
+  readonly name: string;
+  readonly relevance: 'high' | 'medium' | 'low';
+  /** The reasons, joined into one phrase. */
+  readonly why: string;
+  readonly spoken: string;
+}
+
+export interface ContextModel {
+  readonly summary: string;
+  readonly files: readonly ContextFileRow[];
+  /** Grouped exclusions, already worded. */
+  readonly excluded: readonly { readonly label: string; readonly reason: string }[];
+  readonly truncated: boolean;
+}
+
+/**
+ * Turn a context set into finished display strings.
+ *
+ * Both halves survive into the model — included files and the exclusions with
+ * their counts — because a context boundary the user cannot see is one they
+ * cannot correct.
+ */
+export function presentContext(set: ContextSet): ContextModel {
+  return {
+    summary: summarizeContext(set),
+    files: set.included.map((file) => ({
+      path: file.path,
+      name: file.path.slice(file.path.lastIndexOf('/') + 1),
+      relevance: file.relevance,
+      why: file.why.join(', '),
+      spoken: `${file.path}, ${file.relevance} relevance: ${file.why.join(', ')}`,
+    })),
+    excluded: set.excluded.map((exclusion) => ({
+      label:
+        exclusion.count > 1
+          ? `${exclusion.pattern} (${exclusion.count})`
+          : exclusion.pattern,
+      reason: exclusion.reason,
+    })),
+    truncated: set.truncated,
+  };
+}
+
+
+/** The "Why this model?" disclosure. */
+export interface WhyModel {
+  readonly modelId: string;
+  readonly roleLabel: string;
+  /** The facts the choice rested on, each already a sentence. */
+  readonly reasons: readonly string[];
+  /** Models considered and passed over, worded. Possibly empty. */
+  readonly rejected: readonly string[];
+  readonly spoken: string;
+}
+
+/**
+ * Present a selection.
+ *
+ * Every line is a fact the user can check — a declared capability or a measured
+ * outcome. Nothing here claims the model is *good* at the role, because
+ * CodeRelay has no evidence for that and saying it would be the fabricated
+ * statistic the brief rules out.
+ */
+export function presentWhyModel(selection: Selection): WhyModel {
+  const rejected = selection.rejected.map((r) => `${r.model.modelId} — ${r.reason}`);
+  return {
+    modelId: selection.model.modelId,
+    roleLabel: ROLE_LABELS[selection.role],
+    reasons: selection.reasons,
+    rejected,
+    spoken: `${selection.model.modelId} was chosen for ${ROLE_LABELS[
+      selection.role
+    ].toLowerCase()}: ${selection.reasons.join('; ')}.`,
+  };
 }

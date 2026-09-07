@@ -23,9 +23,12 @@
  * *might* not happen on a different provider) it is tagged `inferred`, and the
  * UI must not present the two in the same voice.
  *
- * Backoff is deterministic. Jitter is deliberately absent: this is a single-user
- * editor extension, not a fleet, so there is no thundering herd to spread out,
- * and a deterministic delay is one that can be tested.
+ * Backoff is exponential and capped. Jitter is opt-in through `random`: a
+ * caller that omits it gets the deterministic delay this module always
+ * produced, which is what keeps the decision table testable, and the agent loop
+ * supplies a real source so concurrent legs do not retry in lockstep. See
+ * `backoffMs` for why the original "single user, so no herd" reasoning stopped
+ * holding once hedging existed.
  */
 import type { ErrorClass, ModelCapabilities, ModelRef } from '../core/types.js';
 import type { Classification, RequestClassification } from '../recovery/classify.js';
@@ -106,6 +109,14 @@ export interface RouteInput {
   /** Context compactions already performed in this task. */
   readonly compactionsDone?: number;
   readonly limits?: RouteLimits;
+  /**
+   * Source of jitter for computed backoff. Omit for a deterministic delay.
+   *
+   * Injected rather than read from `Math.random` inside the module so `route()`
+   * stays pure: the same inputs must always produce the same decision, or the
+   * decision table below could not be asserted at all.
+   */
+  readonly random?: () => number;
 }
 
 /** How confident the decision is. Never render these two the same way. */
@@ -172,11 +183,51 @@ export function sameModel(a: ModelRef, b: ModelRef): boolean {
   return a.providerId === b.providerId && a.modelId === b.modelId;
 }
 
-/** Deterministic exponential backoff, capped by the policy's wait budget. */
-export function backoffMs(priorAttemptsOnModel: number, limits: RouteLimits): number {
+/**
+ * Exponential backoff, capped by the policy's wait budget.
+ *
+ * `random` is optional and omitting it gives the original deterministic delay,
+ * which is what every decision-table test wants: a policy assertion should not
+ * have to reason about a distribution.
+ *
+ * When supplied, *equal jitter* is applied — half the delay is fixed and half
+ * is spread uniformly across the remainder. Full jitter (uniform across the
+ * whole interval) was rejected because it can return a near-zero wait after a
+ * 429, which is the one thing a rate-limit backoff must not do; no jitter at
+ * all was the previous behaviour, and it stopped being defensible once hedging
+ * put several attempts in flight at once. That is the case the original comment
+ * here did not anticipate: the "single user, so no herd" argument holds for one
+ * sequential retry loop, and fails as soon as N legs can fail together and
+ * retry on the same tick. ContinuityBench (arXiv:2607.15899) reports that
+ * synchronized retries against a rate-limited provider can hold it locked out
+ * indefinitely.
+ *
+ * A caller-supplied `retryAfterMs` is never jittered — see `route()`. That is a
+ * number the provider chose, and second-guessing it is how you get throttled
+ * for longer.
+ */
+export function backoffMs(
+  priorAttemptsOnModel: number,
+  limits: RouteLimits,
+  random?: () => number,
+): number {
   const exponent = Math.max(0, priorAttemptsOnModel - 1);
   const raw = limits.baseBackoffMs * 2 ** exponent;
-  return Math.min(raw, limits.maxWaitMs);
+  const capped = Math.min(raw, limits.maxWaitMs);
+  if (random === undefined) {
+    return capped;
+  }
+  const half = capped / 2;
+  // Clamped because a caller's `random` is outside this module's control, and a
+  // routing delay derived from a value outside [0,1) should not be able to
+  // exceed the wait budget the policy just enforced. `Number.isFinite` is
+  // checked first because `Math.min`/`Math.max` propagate `NaN` rather than
+  // clamping it, and a `NaN` delay would be passed to a timer as an immediate
+  // retry — turning a backoff into a hot loop against a provider that just
+  // asked us to slow down.
+  const raw01 = random();
+  const spread = Number.isFinite(raw01) ? Math.min(1, Math.max(0, raw01)) : 0;
+  return Math.round(half + spread * half);
 }
 
 /**
@@ -504,7 +555,10 @@ function afterTransientFailure(input: RouteInput, limits: RouteLimits): RouteDec
 
   const priorOnModel = attemptsOn(input.attempts, input.current);
   const budgetLeft = priorOnModel < limits.maxAttemptsPerModel;
-  const delayMs = failure.retryAfterMs ?? backoffMs(priorOnModel, limits);
+  // A provider-supplied `retry-after` is used exactly as given. It is an
+  // instruction, not an estimate, and jittering it would either retry too early
+  // (throttled again) or wait longer than asked for no reason.
+  const delayMs = failure.retryAfterMs ?? backoffMs(priorOnModel, limits, input.random);
 
   if (failure.requestRetryable && budgetLeft && delayMs <= limits.maxWaitMs) {
     return {
@@ -704,7 +758,7 @@ function rejectedCredentials(attempts: readonly PastAttempt[]): ReadonlySet<stri
 }
 
 function pairKey(credentialId: string, model: ModelRef): string {
-  return `${credentialId} ${model.providerId} ${model.modelId}`;
+  return `${credentialId}\0${model.providerId}\0${model.modelId}`;
 }
 
 /**

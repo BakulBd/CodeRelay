@@ -38,11 +38,123 @@
     btnNewTask: document.getElementById('btn-new-task'),
     btnRefresh: document.getElementById('btn-refresh'),
     btnSessions: document.getElementById('btn-sessions'),
-    btnCmdMenu: document.getElementById('btn-cmd-menu'),
-    commandPopover: document.getElementById('command-popover'),
     btnExport: document.getElementById('btn-export'),
     btnSound: document.getElementById('btn-sound'),
     btnOpenSetup: document.getElementById('btn-open-setup'),
+    btnProgress: document.getElementById('btn-progress'),
+    progressFill: document.getElementById('progress-fill'),
+    progressLabel: document.getElementById('progress-label'),
+    btnWorkspace: document.getElementById('btn-workspace'),
+    btnSettings: document.getElementById('btn-settings'),
+    btnNotifications: document.getElementById('btn-notifications'),
+    notifBadge: document.getElementById('notif-badge'),
+    btnOverflow: document.getElementById('btn-overflow'),
+
+    // Navigation Tabs
+    navTabs: document.getElementById('nav-tabs'),
+    tabComposer: document.getElementById('tab-composer'),
+    tabCurrent: document.getElementById('tab-current'),
+    tabTasks: document.getElementById('tab-tasks'),
+    tabWorkspace: document.getElementById('tab-workspace'),
+    tabAi: document.getElementById('tab-ai'),
+    tabRecovery: document.getElementById('tab-recovery'),
+    tabBenchmarks: document.getElementById('tab-benchmarks'),
+    tabSettings: document.getElementById('tab-settings'),
+
+    // Continuity & Resilience Gauge
+    btnContinuityScore: document.getElementById('btn-continuity-score'),
+    continuityDot: document.getElementById('continuity-dot'),
+    continuityScoreVal: document.getElementById('continuity-score-val'),
+    continuityHealthLabel: document.getElementById('continuity-health-label'),
+    continuityPopover: document.getElementById('continuity-popover'),
+    continuitySummaryNote: document.getElementById('continuity-summary-note'),
+    statCpInt: document.getElementById('stat-cp-int'),
+    statReqCov: document.getElementById('stat-req-cov'),
+    statVerRec: document.getElementById('stat-ver-rec'),
+    statWorkDiv: document.getElementById('stat-work-div'),
+    statActIdem: document.getElementById('stat-act-idem'),
+
+    // Benchmark Lab & Chaos
+    benchmarksPanel: document.getElementById('benchmarks-panel'),
+    selectBenchmarkScenario: document.getElementById('select-benchmark-scenario'),
+    btnRunBenchmark: document.getElementById('btn-run-benchmark'),
+    benchmarkResultsTable: document.getElementById('benchmark-results-table'),
+    benchmarkTableBody: document.getElementById('benchmark-table-body'),
+    selectChaosType: document.getElementById('select-chaos-type'),
+    btnInjectChaos: document.getElementById('btn-inject-chaos'),
+    chaosResultsDisplay: document.getElementById('chaos-results-display'),
+    btnExportGraph: document.getElementById('btn-export-graph'),
+    btnImportGraph: document.getElementById('btn-import-graph'),
+    btnRunReview: document.getElementById('btn-run-review'),
+    reviewVerdictDisplay: document.getElementById('review-verdict-display'),
+    graphStatusText: document.getElementById('graph-status-text'),
+
+    // Relay Center
+    selectTargetWorker: document.getElementById('select-target-worker'),
+    relayConfidenceBadge: document.getElementById('relay-confidence-badge'),
+    relayRationaleText: document.getElementById('relay-rationale-text'),
+    btnExecuteRelay: document.getElementById('btn-execute-relay'),
+    btnRollbackCp: document.getElementById('btn-rollback-cp'),
+    lostWorkGuaranteeBadge: document.getElementById('lost-work-guarantee-badge'),
+
+    // Notification Drawer
+    notificationDrawer: document.getElementById('notification-drawer'),
+    btnCloseNotifs: document.getElementById('btn-close-notifs'),
+    btnDismissAllNotifs: document.getElementById('btn-dismiss-all-notifs'),
+    notificationList: document.getElementById('notification-list'),
+
+    // Workspace Modal
+    workspaceModal: document.getElementById('workspace-modal'),
+    btnCloseWorkspaceModal: document.getElementById('btn-close-workspace-modal'),
+    wsProjectName: document.getElementById('ws-project-name'),
+    wsProjectPath: document.getElementById('ws-project-path'),
+    btnWsOpenFolder: document.getElementById('btn-ws-open-folder'),
+    btnWsReveal: document.getElementById('btn-ws-reveal'),
+    btnWsCancel: document.getElementById('btn-ws-cancel'),
+
+    // Interactive Context Modal
+    contextModal: document.getElementById('context-modal'),
+    btnCloseContextModal: document.getElementById('btn-close-context-modal'),
+    ctxChkActiveEditor: document.getElementById('ctx-chk-active-editor'),
+    ctxChkDiagnostics: document.getElementById('ctx-chk-diagnostics'),
+    ctxDiagCount: document.getElementById('ctx-diag-count'),
+    ctxChkGitDiff: document.getElementById('ctx-chk-git-diff'),
+    ctxChkMemory: document.getElementById('ctx-chk-memory'),
+    contextFilesList: document.getElementById('context-files-list'),
+    btnCancelContext: document.getElementById('btn-cancel-context'),
+    btnApplyContext: document.getElementById('btn-apply-context'),
+
+    // Approval Card
+    approvalCard: document.getElementById('approval-card'),
+    approvalRisk: document.getElementById('approval-risk'),
+    approvalReason: document.getElementById('approval-reason'),
+    approvalCommand: document.getElementById('approval-command'),
+    btnApprovalDeny: document.getElementById('btn-approval-deny'),
+    btnApprovalOnce: document.getElementById('btn-approval-once'),
+    btnApprovalTask: document.getElementById('btn-approval-task'),
+
+    // Enhance Proposal Card
+    enhanceCard: document.getElementById('enhance-card'),
+    enhanceCardBody: document.getElementById('enhance-card-body'),
+    btnEnhanceCancel: document.getElementById('btn-enhance-cancel'),
+    btnEnhanceEdit: document.getElementById('btn-enhance-edit'),
+    btnEnhanceUse: document.getElementById('btn-enhance-use'),
+
+    // Settings Panel
+    settingsPanel: document.getElementById('settings-panel'),
+    setDefaultMode: document.getElementById('set-default-mode'),
+    setSoundEnabled: document.getElementById('set-sound-enabled'),
+    setAutoRouting: document.getElementById('set-auto-routing'),
+    setAutoRelay: document.getElementById('set-auto-relay'),
+    setPermMode: document.getElementById('set-perm-mode'),
+    setCheckpointsEnabled: document.getElementById('set-checkpoints-enabled'),
+    setVerifyTests: document.getElementById('set-verify-tests'),
+    setVerifyTypes: document.getElementById('set-verify-types'),
+
+    // AI System Panel
+    aiPanel: document.getElementById('ai-panel'),
+    btnAddProviderModal: document.getElementById('btn-add-provider-modal'),
+    aiContentBody: document.getElementById('ai-content-body'),
 
     // Sessions Drawer
     sessionsDrawer: document.getElementById('sessions-drawer'),
@@ -56,12 +168,16 @@
     statusText: document.getElementById('status-text'),
     title: document.getElementById('title'),
     meta: document.getElementById('meta'),
+    relayHero: document.getElementById('relay-hero'),
     notice: document.getElementById('notice'),
     empty: document.getElementById('empty'),
     onboardingCard: document.getElementById('onboarding-card'),
     btnSetupOnboard: document.getElementById('btn-setup-onboard'),
     btnSetupLocalOnboard: document.getElementById('btn-setup-local-onboard'),
-    workspaceComposer: document.getElementById('workspace-composer'),
+    // The composer element, looked up once. It is a <form id="composer"> so the
+    // client's submit handler fires; `workspaceComposer` is the same node under
+    // the name the show/hide code uses.
+    workspaceComposer: document.getElementById('composer'),
     recentTasksSection: document.getElementById('recent-tasks-section'),
     recentTasksList: document.getElementById('recent-tasks-list'),
     changesCard: document.getElementById('changes-card'),
@@ -69,6 +185,42 @@
     changesCardList: document.getElementById('changes-card-list'),
     btnReviewChanges: document.getElementById('btn-review-changes'),
     timeline: document.getElementById('timeline'),
+    stages: document.getElementById('stages'),
+    stageList: document.getElementById('stage-list'),
+    whyPanel: document.getElementById('why-panel'),
+    whyToggle: document.getElementById('why-toggle'),
+    whyLine: document.getElementById('why-line'),
+    whyBody: document.getElementById('why-body'),
+    whyList: document.getElementById('why-list'),
+    whyRejected: document.getElementById('why-rejected'),
+    whyRejectedList: document.getElementById('why-rejected-list'),
+    ctxPanel: document.getElementById('ctx-panel'),
+    ctxToggle: document.getElementById('ctx-toggle'),
+    ctxSummary: document.getElementById('ctx-summary'),
+    ctxBody: document.getElementById('ctx-body'),
+    ctxList: document.getElementById('ctx-list'),
+    ctxExcluded: document.getElementById('ctx-excluded'),
+    ctxExcludedList: document.getElementById('ctx-excluded-list'),
+    btnCtxRebuild: document.getElementById('btn-ctx-rebuild'),
+    btnCtxClear: document.getElementById('btn-ctx-clear'),
+    reqPanel: document.getElementById('req-panel'),
+    reqSummary: document.getElementById('req-summary'),
+    reqList: document.getElementById('req-list'),
+    verifyPanel: document.getElementById('verify-panel'),
+    verifyGlyph: document.getElementById('verify-glyph'),
+    verifyLabel: document.getElementById('verify-label'),
+    verifyTotal: document.getElementById('verify-total'),
+    verifyDetail: document.getElementById('verify-detail'),
+    verifyList: document.getElementById('verify-list'),
+    verifyUnavailable: document.getElementById('verify-unavailable'),
+    btnVerify: document.getElementById('btn-verify'),
+    btnRelay: document.getElementById('btn-relay'),
+    btnVerifyStop: document.getElementById('btn-verify-stop'),
+    recoveryPanel: document.getElementById('recovery-panel'),
+    recoveryToggle: document.getElementById('recovery-toggle'),
+    recoverySummary: document.getElementById('recovery-summary'),
+    recoveryCheckpoints: document.getElementById('recovery-checkpoints'),
+    recoveryList: document.getElementById('recovery-list'),
     executionFollowup: document.getElementById('execution-followup'),
     followupPrompt: document.getElementById('followup-prompt'),
     btnFollowupAttach: document.getElementById('btn-followup-attach'),
@@ -76,7 +228,7 @@
     btnFollowupSend: document.getElementById('btn-followup-send'),
 
     // Composer & Autocomplete
-    composer: document.getElementById('composer') || document.getElementById('workspace-composer'),
+    composer: document.getElementById('composer'),
     autocompletePopup: document.getElementById('autocomplete-popup'),
     contextChips: document.getElementById('context-chips'),
     prompt: document.getElementById('prompt'),
@@ -100,6 +252,11 @@
     setupSub: document.getElementById('setup-sub'),
     setupAlert: document.getElementById('setup-alert'),
     setupBody: document.getElementById('setup-body'),
+    keypool: document.getElementById('keypool'),
+    keypoolSummary: document.getElementById('keypool-summary'),
+    keypoolBlocked: document.getElementById('keypool-blocked'),
+    keypoolList: document.getElementById('keypool-list'),
+    btnKeyAdd: document.getElementById('btn-key-add'),
     setupBack: document.getElementById('setup-back'),
     setupBlocked: document.getElementById('setup-blocked'),
     setupCancel: document.getElementById('setup-cancel'),
@@ -423,6 +580,36 @@
 
   // --- Context Gauge & Popover ---
 
+  el.whyToggle.addEventListener('click', () => {
+    const open = el.whyBody.hidden;
+    el.whyBody.hidden = !open;
+    el.whyToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    el.whyPanel.classList.toggle('is-open', open);
+  });
+
+  el.ctxToggle.addEventListener('click', () => {
+    const open = el.ctxBody.hidden;
+    el.ctxBody.hidden = !open;
+    el.ctxToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    el.ctxPanel.classList.toggle('is-open', open);
+  });
+  el.btnCtxRebuild.addEventListener('click', () => post({ kind: 'rebuildContext' }));
+  el.btnCtxClear.addEventListener('click', () => post({ kind: 'clearContext' }));
+
+  el.btnKeyAdd.addEventListener('click', () => post({ kind: 'addCredential' }));
+  el.btnRelay.addEventListener('click', () => post({ kind: 'relay' }));
+  el.btnVerify.addEventListener('click', () => post({ kind: 'verify' }));
+  el.btnVerifyStop.addEventListener('click', () => post({ kind: 'stopVerify' }));
+
+  // Recovery panel: collapsed by default. The headline says whether anything
+  // went wrong, and the detail is one click away rather than always on screen.
+  el.recoveryToggle.addEventListener('click', () => {
+    const open = el.recoveryList.hidden;
+    el.recoveryList.hidden = !open;
+    el.recoveryToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    el.recoveryPanel.classList.toggle('is-open', open);
+  });
+
   el.btnContextGauge.addEventListener('click', (e) => {
     e.stopPropagation();
     const isHidden = el.contextPopover.hidden;
@@ -435,6 +622,60 @@
     post({ kind: 'compactContext' });
   });
 
+  // Continuity Score Popover
+  if (el.btnContinuityScore) {
+    el.btnContinuityScore.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (el.continuityPopover) {
+        show(el.continuityPopover, el.continuityPopover.hidden);
+      }
+    });
+  }
+
+  // Relay Center Actions
+  if (el.btnExecuteRelay) {
+    el.btnExecuteRelay.addEventListener('click', () => {
+      post({ kind: 'relayTask' });
+    });
+  }
+  if (el.btnRollbackCp) {
+    el.btnRollbackCp.addEventListener('click', () => {
+      post({ kind: 'rollbackCheckpoint', checkpointId: 'latest' });
+    });
+  }
+
+  // Benchmark Lab & Chaos Harness Actions
+  if (el.btnRunBenchmark) {
+    el.btnRunBenchmark.addEventListener('click', () => {
+      const scenarioId = el.selectBenchmarkScenario ? el.selectBenchmarkScenario.value : 'rate_limit_429';
+      post({ kind: 'runRecoveryBenchmark', scenarioId });
+    });
+  }
+  if (el.btnInjectChaos) {
+    el.btnInjectChaos.addEventListener('click', () => {
+      const failureType = el.selectChaosType ? el.selectChaosType.value : 'RATE_LIMIT_429';
+      post({ kind: 'injectChaos', failureType });
+    });
+  }
+  if (el.btnExportGraph) {
+    el.btnExportGraph.addEventListener('click', () => {
+      post({ kind: 'exportTaskGraph' });
+    });
+  }
+  if (el.btnImportGraph) {
+    el.btnImportGraph.addEventListener('click', () => {
+      const json = window.prompt('Paste exported task graph JSON:');
+      if (json) {
+        post({ kind: 'importTaskGraph', graphJson: json });
+      }
+    });
+  }
+  if (el.btnRunReview) {
+    el.btnRunReview.addEventListener('click', () => {
+      post({ kind: 'runMultiModelReview' });
+    });
+  }
+
   document.addEventListener('click', (e) => {
     if (!el.modeWrap || !el.contextGaugeWrap) return;
     if (!document.getElementById('mode-wrap').contains(e.target)) {
@@ -443,6 +684,10 @@
     }
     if (!document.getElementById('context-gauge-wrap').contains(e.target)) {
       show(el.contextPopover, false);
+    }
+    const contWrap = document.getElementById('continuity-badge-wrap');
+    if (contWrap && !contWrap.contains(e.target) && el.continuityPopover) {
+      show(el.continuityPopover, false);
     }
     if (!el.composer.contains(e.target)) {
       show(el.autocompletePopup, false);
@@ -522,30 +767,6 @@
   if (el.btnRefresh) {
     el.btnRefresh.addEventListener('click', () => post({ kind: 'refreshViews' }));
   }
-  if (el.btnCmdMenu && el.commandPopover) {
-    el.btnCmdMenu.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isHidden = el.commandPopover.hidden;
-      show(el.commandPopover, isHidden);
-      show(el.modeMenu, false);
-      show(el.contextPopover, false);
-    });
-
-    for (const item of el.commandPopover.querySelectorAll('.command-item')) {
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        show(el.commandPopover, false);
-        const cmd = item.dataset.cmd;
-        if (cmd === 'openHistory') {
-          show(el.sessionsDrawer, true);
-          el.drawerSearch.focus();
-        } else if (cmd) {
-          post({ kind: cmd });
-        }
-      });
-    }
-  }
-
   el.btnExport.addEventListener('click', () => post({ kind: 'exportMarkdown' }));
   el.btnSound.addEventListener('click', () => {
     soundEnabled = !soundEnabled;
@@ -553,6 +774,640 @@
     post({ kind: 'toggleSound', enabled: soundEnabled });
   });
   el.btnOpenSetup.addEventListener('click', () => post({ kind: 'setupOpenManage' }));
+
+  // --- Header, Navigation, Modals & Panels Controller ---
+
+  let currentNavTab = 'composer';
+  let activeApprovalId = null;
+  let pendingEnhancedText = null;
+  let currentAiSubTab = 'models';
+
+  function switchTab(tabId, notify = true) {
+    currentNavTab = tabId;
+    const allTabs = [
+      el.tabComposer,
+      el.tabCurrent,
+      el.tabTasks,
+      el.tabWorkspace,
+      el.tabAi,
+      el.tabRecovery,
+      el.tabBenchmarks,
+      el.tabSettings,
+    ];
+    for (const btn of allTabs) {
+      if (!btn) continue;
+      const isTarget = btn.getAttribute('data-tab') === tabId;
+      btn.classList.toggle('is-active', isTarget);
+      btn.setAttribute('aria-selected', isTarget ? 'true' : 'false');
+    }
+
+    if (tabId === 'settings') {
+      show(el.settingsPanel, true);
+      show(el.aiPanel, false);
+      show(el.benchmarksPanel, false);
+      show(el.empty, false);
+      show(el.header, false);
+      show(el.timeline, false);
+      show(el.stages, false);
+      show(el.whyPanel, false);
+      show(el.ctxPanel, false);
+      show(el.reqPanel, false);
+      show(el.verifyPanel, false);
+      show(el.recoveryPanel, false);
+      if (el.executionFollowup) show(el.executionFollowup, false);
+    } else if (tabId === 'benchmarks') {
+      show(el.benchmarksPanel, true);
+      show(el.settingsPanel, false);
+      show(el.aiPanel, false);
+      show(el.empty, false);
+      show(el.header, false);
+      show(el.timeline, false);
+      show(el.stages, false);
+      show(el.whyPanel, false);
+      show(el.ctxPanel, false);
+      show(el.reqPanel, false);
+      show(el.verifyPanel, false);
+      show(el.recoveryPanel, false);
+      if (el.executionFollowup) show(el.executionFollowup, false);
+      renderBenchmarkLab(state || {});
+    } else if (tabId === 'ai') {
+      show(el.aiPanel, true);
+      show(el.settingsPanel, false);
+      show(el.benchmarksPanel, false);
+      show(el.empty, false);
+      show(el.header, false);
+      show(el.timeline, false);
+      show(el.stages, false);
+      show(el.whyPanel, false);
+      show(el.ctxPanel, false);
+      show(el.reqPanel, false);
+      show(el.verifyPanel, false);
+      show(el.recoveryPanel, false);
+      if (el.executionFollowup) show(el.executionFollowup, false);
+      renderAiPanel(state);
+    } else if (tabId === 'workspace') {
+      openWorkspaceModal();
+    } else if (tabId === 'tasks') {
+      show(el.settingsPanel, false);
+      show(el.aiPanel, false);
+      show(el.benchmarksPanel, false);
+      if (el.sessionsDrawer) {
+        show(el.sessionsDrawer, true);
+      }
+    } else if (tabId === 'recovery') {
+      show(el.settingsPanel, false);
+      show(el.aiPanel, false);
+      show(el.benchmarksPanel, false);
+      show(el.empty, false);
+      show(el.header, false);
+      show(el.timeline, false);
+      show(el.stages, false);
+      show(el.whyPanel, false);
+      show(el.ctxPanel, false);
+      show(el.reqPanel, false);
+      show(el.verifyPanel, false);
+      if (el.executionFollowup) show(el.executionFollowup, false);
+      if (el.recoveryPanel) {
+        show(el.recoveryPanel, true);
+        el.recoveryPanel.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else if (tabId === 'current') {
+      show(el.settingsPanel, false);
+      show(el.aiPanel, false);
+      show(el.benchmarksPanel, false);
+      const hasTask = Boolean(state && state.taskId && (state.live || (state.nodes && state.nodes.length > 0) || state.header));
+      show(el.header, hasTask);
+      show(el.timeline, hasTask);
+      show(el.stages, hasTask && Boolean(state && state.stages && state.stages.length > 0));
+      show(el.whyPanel, hasTask && Boolean(state && state.whyModel));
+      show(el.ctxPanel, hasTask && Boolean(state && state.context));
+      show(el.reqPanel, hasTask && Boolean(state && state.requirements && state.requirements.length > 0));
+      show(el.verifyPanel, hasTask);
+      show(el.recoveryPanel, hasTask && Boolean(state && state.recoverySummary && state.recovery && state.recovery.length > 0));
+      if (el.executionFollowup) show(el.executionFollowup, hasTask);
+      show(el.empty, !hasTask);
+    } else {
+      // Composer
+      show(el.settingsPanel, false);
+      show(el.aiPanel, false);
+      show(el.benchmarksPanel, false);
+      show(el.header, false);
+      show(el.timeline, false);
+      show(el.stages, false);
+      show(el.whyPanel, false);
+      show(el.ctxPanel, false);
+      show(el.reqPanel, false);
+      show(el.verifyPanel, false);
+      show(el.recoveryPanel, false);
+      if (el.executionFollowup) show(el.executionFollowup, false);
+      show(el.empty, true);
+      el.prompt.focus();
+    }
+
+    if (notify) {
+      post({ kind: 'switchNavTab', tab: tabId });
+    }
+  }
+
+  // Header controls
+  if (el.btnProgress) {
+    el.btnProgress.addEventListener('click', () => {
+      post({ kind: 'focusActiveTask' });
+      switchTab('current');
+    });
+  }
+  if (el.btnWorkspace) {
+    el.btnWorkspace.addEventListener('click', () => {
+      openWorkspaceModal();
+      post({ kind: 'workspaceActions' });
+    });
+  }
+  if (el.btnSettings) {
+    el.btnSettings.addEventListener('click', () => switchTab('settings'));
+  }
+  if (el.btnNotifications) {
+    el.btnNotifications.addEventListener('click', () => toggleNotificationDrawer());
+  }
+  if (el.btnOverflow) {
+    el.btnOverflow.addEventListener('click', () => post({ kind: 'openOverflowMenu' }));
+  }
+
+  // Navigation tab clicks
+  const tabButtons = [
+    el.tabComposer,
+    el.tabCurrent,
+    el.tabTasks,
+    el.tabWorkspace,
+    el.tabAi,
+    el.tabRecovery,
+    el.tabBenchmarks,
+    el.tabSettings,
+  ];
+  for (const tb of tabButtons) {
+    if (!tb) continue;
+    tb.addEventListener('click', () => {
+      const tab = tb.getAttribute('data-tab');
+      if (tab) switchTab(tab);
+    });
+  }
+
+  // Notifications Drawer
+  function toggleNotificationDrawer() {
+    if (!el.notificationDrawer) return;
+    const isHidden = el.notificationDrawer.hidden;
+    show(el.notificationDrawer, isHidden);
+    if (isHidden) {
+      post({ kind: 'openNotifications' });
+    }
+  }
+
+  if (el.btnCloseNotifs) {
+    el.btnCloseNotifs.addEventListener('click', () => show(el.notificationDrawer, false));
+  }
+  if (el.btnDismissAllNotifs) {
+    el.btnDismissAllNotifs.addEventListener('click', () => post({ kind: 'dismissAllNotifications' }));
+  }
+
+  function renderNotifications(notifications) {
+    if (!el.notificationList) return;
+    clear(el.notificationList);
+    const unread = (notifications || []).filter((n) => !n.read).length;
+    if (el.notifBadge) {
+      if (unread > 0) {
+        setText(el.notifBadge, String(unread));
+        show(el.notifBadge, true);
+      } else {
+        show(el.notifBadge, false);
+      }
+    }
+
+    if (!notifications || notifications.length === 0) {
+      el.notificationList.appendChild(make('p', 'empty-state-notice', '🔔 No new notifications'));
+      return;
+    }
+
+    for (const notif of notifications) {
+      const item = make('div', `notification-item ${notif.read ? 'is-read' : 'is-unread'}`);
+      const head = make('div', 'notif-item-head');
+      head.appendChild(make('strong', 'notif-item-title', notif.title));
+      head.appendChild(make('span', 'notif-item-time', notif.timestamp || ''));
+
+      const dismissBtn = make('button', 'icon-btn notif-dismiss', '✕');
+      dismissBtn.title = 'Dismiss';
+      dismissBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        post({ kind: 'dismissNotification', id: notif.id });
+      });
+      head.appendChild(dismissBtn);
+      item.appendChild(head);
+
+      item.appendChild(make('p', 'notif-item-msg', notif.message));
+
+      if (notif.taskId) {
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => {
+          post({ kind: 'switchSession', taskId: notif.taskId });
+          show(el.notificationDrawer, false);
+          switchTab('current');
+        });
+      }
+      el.notificationList.appendChild(item);
+    }
+  }
+
+  // Workspace Modal
+  function openWorkspaceModal() {
+    if (!el.workspaceModal) return;
+    if (state && state.workspaceInfo) {
+      setText(el.wsProjectName, state.workspaceInfo.name || 'Active Project');
+      setText(el.wsProjectPath, state.workspaceInfo.path || '');
+    }
+    if (typeof el.workspaceModal.showModal === 'function') {
+      try {
+        el.workspaceModal.showModal();
+      } catch {
+        show(el.workspaceModal, true);
+      }
+    } else {
+      show(el.workspaceModal, true);
+    }
+  }
+
+  function closeWorkspaceModal() {
+    if (!el.workspaceModal) return;
+    if (typeof el.workspaceModal.close === 'function') {
+      try {
+        el.workspaceModal.close();
+      } catch {
+        show(el.workspaceModal, false);
+      }
+    } else {
+      show(el.workspaceModal, false);
+    }
+  }
+
+  if (el.btnCloseWorkspaceModal) {
+    el.btnCloseWorkspaceModal.addEventListener('click', closeWorkspaceModal);
+  }
+  if (el.btnWsCancel) {
+    el.btnWsCancel.addEventListener('click', closeWorkspaceModal);
+  }
+  if (el.btnWsOpenFolder) {
+    el.btnWsOpenFolder.addEventListener('click', () => {
+      post({ kind: 'workspaceActions' });
+      closeWorkspaceModal();
+    });
+  }
+  if (el.btnWsReveal) {
+    el.btnWsReveal.addEventListener('click', () => {
+      post({ kind: 'workspaceActions' });
+      closeWorkspaceModal();
+    });
+  }
+
+  // Context Modal
+  function openContextModal() {
+    if (!el.contextModal) return;
+    if (state && state.context && state.context.files && el.contextFilesList) {
+      clear(el.contextFilesList);
+      for (const f of state.context.files) {
+        const lbl = make('label', 'context-source-item');
+        const chk = make('input');
+        chk.type = 'checkbox';
+        chk.value = f.path;
+        chk.checked = true;
+        lbl.appendChild(chk);
+        lbl.appendChild(make('span', null, f.path));
+        el.contextFilesList.appendChild(lbl);
+      }
+    }
+    if (typeof el.contextModal.showModal === 'function') {
+      try {
+        el.contextModal.showModal();
+      } catch {
+        show(el.contextModal, true);
+      }
+    } else {
+      show(el.contextModal, true);
+    }
+  }
+
+  function closeContextModal() {
+    if (!el.contextModal) return;
+    if (typeof el.contextModal.close === 'function') {
+      try {
+        el.contextModal.close();
+      } catch {
+        show(el.contextModal, false);
+      }
+    } else {
+      show(el.contextModal, false);
+    }
+  }
+
+  if (el.btnCloseContextModal) el.btnCloseContextModal.addEventListener('click', closeContextModal);
+  if (el.btnCancelContext) el.btnCancelContext.addEventListener('click', closeContextModal);
+  if (el.btnApplyContext) {
+    el.btnApplyContext.addEventListener('click', () => {
+      const selectedFiles = [];
+      if (el.contextFilesList) {
+        const chks = el.contextFilesList.querySelectorAll('input[type="checkbox"]:checked');
+        chks.forEach((c) => selectedFiles.push(c.value));
+      }
+      post({ kind: 'applyContext', files: selectedFiles });
+      closeContextModal();
+    });
+  }
+
+  // Approval Card
+  if (el.btnApprovalDeny) {
+    el.btnApprovalDeny.addEventListener('click', () => {
+      post({ kind: 'resolveApproval', requestId: activeApprovalId || '', decision: 'deny' });
+      show(el.approvalCard, false);
+      activeApprovalId = null;
+    });
+  }
+  if (el.btnApprovalOnce) {
+    el.btnApprovalOnce.addEventListener('click', () => {
+      post({ kind: 'resolveApproval', requestId: activeApprovalId || '', decision: 'allow_once' });
+      show(el.approvalCard, false);
+      activeApprovalId = null;
+    });
+  }
+  if (el.btnApprovalTask) {
+    el.btnApprovalTask.addEventListener('click', () => {
+      post({ kind: 'resolveApproval', requestId: activeApprovalId || '', decision: 'allow_for_task' });
+      show(el.approvalCard, false);
+      activeApprovalId = null;
+    });
+  }
+
+  // Enhance Card
+  if (el.btnEnhanceCancel) {
+    el.btnEnhanceCancel.addEventListener('click', () => {
+      show(el.enhanceCard, false);
+      pendingEnhancedText = null;
+    });
+  }
+  if (el.btnEnhanceEdit) {
+    el.btnEnhanceEdit.addEventListener('click', () => {
+      if (pendingEnhancedText) {
+        el.prompt.value = pendingEnhancedText;
+        autosize();
+        persist();
+        el.prompt.focus();
+      }
+      show(el.enhanceCard, false);
+    });
+  }
+  if (el.btnEnhanceUse) {
+    el.btnEnhanceUse.addEventListener('click', () => {
+      if (pendingEnhancedText) {
+        el.prompt.value = pendingEnhancedText;
+        autosize();
+        persist();
+      }
+      show(el.enhanceCard, false);
+    });
+  }
+
+  // Settings Synchronization
+  function syncSettingsUI(settings) {
+    if (!settings) return;
+    if (el.setDefaultMode && settings.general) {
+      el.setDefaultMode.value = settings.general.defaultTaskMode || 'code';
+    }
+    if (el.setSoundEnabled && settings.general) {
+      el.setSoundEnabled.checked = Boolean(settings.general.enableSoundNotifications);
+    }
+    if (el.setAutoRouting && settings.ai) {
+      el.setAutoRouting.checked = Boolean(settings.ai.automaticRouting);
+    }
+    if (el.setAutoRelay && settings.ai) {
+      el.setAutoRelay.checked = Boolean(settings.ai.autoRelayOnFailure);
+    }
+    if (el.setPermMode && settings.execution) {
+      el.setPermMode.value = settings.execution.permissionMode || 'balanced';
+    }
+    if (el.setCheckpointsEnabled && settings.execution) {
+      el.setCheckpointsEnabled.checked = settings.execution.checkpointFrequency !== 'manual';
+    }
+    if (el.setVerifyTests && settings.verification) {
+      el.setVerifyTests.checked = Boolean(settings.verification.runTests);
+    }
+    if (el.setVerifyTypes && settings.verification) {
+      el.setVerifyTypes.checked = Boolean(settings.verification.runTypecheck);
+    }
+  }
+
+  if (el.setDefaultMode) {
+    el.setDefaultMode.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'general', key: 'defaultTaskMode', value: e.target.value }),
+    );
+  }
+  if (el.setSoundEnabled) {
+    el.setSoundEnabled.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'general', key: 'enableSoundNotifications', value: e.target.checked }),
+    );
+  }
+  if (el.setAutoRouting) {
+    el.setAutoRouting.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'ai', key: 'automaticRouting', value: e.target.checked }),
+    );
+  }
+  if (el.setAutoRelay) {
+    el.setAutoRelay.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'ai', key: 'autoRelayOnFailure', value: e.target.checked }),
+    );
+  }
+  if (el.setPermMode) {
+    el.setPermMode.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'execution', key: 'permissionMode', value: e.target.value }),
+    );
+  }
+  if (el.setCheckpointsEnabled) {
+    el.setCheckpointsEnabled.addEventListener('change', (e) =>
+      post({
+        kind: 'saveSetting',
+        category: 'execution',
+        key: 'checkpointFrequency',
+        value: e.target.checked ? 'file_modifications_only' : 'manual',
+      }),
+    );
+  }
+  if (el.setVerifyTests) {
+    el.setVerifyTests.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'verification', key: 'runTests', value: e.target.checked }),
+    );
+  }
+  if (el.setVerifyTypes) {
+    el.setVerifyTypes.addEventListener('change', (e) =>
+      post({ kind: 'saveSetting', category: 'verification', key: 'runTypecheck', value: e.target.checked }),
+    );
+  }
+
+  // AI Panel
+  if (el.btnAddProviderModal) {
+    el.btnAddProviderModal.addEventListener('click', () => post({ kind: 'setupOpenAdd' }));
+  }
+
+  const aiSubTabs = document.querySelectorAll('.ai-sub-tab');
+  aiSubTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      aiSubTabs.forEach((t) => t.classList.remove('is-active'));
+      tab.classList.add('is-active');
+      currentAiSubTab = tab.getAttribute('data-sub') || 'models';
+      renderAiPanel(state);
+    });
+  });
+
+  function renderAiPanel(model) {
+    if (!el.aiContentBody) return;
+    clear(el.aiContentBody);
+
+    if (currentAiSubTab === 'models') {
+      const candidates = model?.candidates ?? [];
+      const list = make('div', 'ai-models-list');
+      if (candidates.length === 0) {
+        list.appendChild(make('p', 'empty-hint', 'No models configured yet. Add an AI provider to get started.'));
+        const btnSetup = button('+ Set Up AI Provider', 'btn btn-primary', () => post({ kind: 'setupOpenAdd' }));
+        list.appendChild(btnSetup);
+      } else {
+        for (const c of candidates) {
+          const card = make('div', 'ai-model-card');
+          const titleRow = make('div', 'model-card-title');
+          const nameSpan = make('strong', null, `${c.model.providerId}/${c.model.modelId}`);
+          titleRow.appendChild(nameSpan);
+
+          if (c.isSelected) {
+            titleRow.appendChild(make('span', 'pill pill-sm pill-accent', '★ Active Model'));
+          } else {
+            const btnSelect = button('Select', 'btn btn-sm btn-quiet', () => {
+              post({ kind: 'selectModel', providerId: c.model.providerId, modelId: c.model.modelId });
+            });
+            titleRow.appendChild(btnSelect);
+          }
+          card.appendChild(titleRow);
+
+          const caps = make('div', 'model-card-caps');
+          if (c.capabilities) {
+            const capBadges = [];
+            if (c.capabilities.streaming) capBadges.push('⚡ Streaming');
+            if (c.capabilities.toolCalling) capBadges.push('🛠 Tool Calling');
+            if (c.capabilities.structuredOutputs) capBadges.push('📋 Structured Output');
+            if (c.capabilities.nativeReasoning) capBadges.push('🧠 Reasoning');
+            if (c.capabilities.contextWindow) capBadges.push(`🪟 ${Math.round(c.capabilities.contextWindow / 1000)}k ctx`);
+            caps.textContent = capBadges.join(' • ');
+          }
+          card.appendChild(caps);
+
+          const actionsRow = make('div', 'ai-actions-row');
+          actionsRow.appendChild(button('⚡ Ping / Connect', 'btn btn-sm btn-quiet', () => {
+            post({ kind: 'runPlayground', providerId: c.model.providerId, modelId: c.model.modelId, testType: 'connection' });
+          }));
+          actionsRow.appendChild(button('⚡ Test Stream', 'btn btn-sm btn-quiet', () => {
+            post({ kind: 'runPlayground', providerId: c.model.providerId, modelId: c.model.modelId, testType: 'streaming' });
+          }));
+          actionsRow.appendChild(button('⚡ Test Tool Call', 'btn btn-sm btn-quiet', () => {
+            post({ kind: 'runPlayground', providerId: c.model.providerId, modelId: c.model.modelId, testType: 'tool_call' });
+          }));
+          card.appendChild(actionsRow);
+
+          list.appendChild(card);
+        }
+      }
+      el.aiContentBody.appendChild(list);
+    } else if (currentAiSubTab === 'providers') {
+      const list = make('div', 'ai-providers-list');
+      const providers = model?.configuredProviders ?? [];
+      if (providers.length === 0) {
+        list.appendChild(make('p', 'empty-hint', 'No AI providers configured yet.'));
+      } else {
+        for (const p of providers) {
+          const card = make('div', 'ai-provider-card');
+          const titleRow = make('div', 'ai-provider-header');
+          titleRow.appendChild(make('strong', null, p.id));
+          titleRow.appendChild(make('span', 'pill pill-sm', p.kind));
+          card.appendChild(titleRow);
+
+          const meta = make('div', 'ai-provider-meta');
+          if (p.baseUrl) meta.appendChild(make('span', null, `Endpoint: ${p.baseUrl}`));
+          meta.appendChild(make('span', null, `${p.modelCount} model(s)`));
+          meta.appendChild(make('span', null, `${p.keyCount} key(s)`));
+          if (p.defaultModel) meta.appendChild(make('span', null, `Default: ${p.defaultModel}`));
+          card.appendChild(meta);
+
+          const actionsRow = make('div', 'ai-actions-row');
+          actionsRow.appendChild(button('⚡ Test Provider', 'btn btn-sm btn-quiet', () => {
+            post({ kind: 'runPlayground', providerId: p.id, modelId: p.defaultModel || 'test', testType: 'connection' });
+          }));
+          actionsRow.appendChild(button('Edit', 'btn btn-sm btn-secondary', () => {
+            post({ kind: 'setupEditProvider', providerId: p.id });
+          }));
+          card.appendChild(actionsRow);
+
+          list.appendChild(card);
+        }
+      }
+      const btnAdd = button('+ Add New Provider', 'btn btn-primary', () => post({ kind: 'setupOpenAdd' }));
+      list.appendChild(btnAdd);
+      el.aiContentBody.appendChild(list);
+    } else if (currentAiSubTab === 'keys') {
+      const box = make('div', 'ai-keys-box');
+      box.appendChild(make('p', 'settings-sub', 'API keys and credentials are encrypted using OS Keychain via VS Code SecretStorage. Keys are never logged or exported in tasks.'));
+
+      const providers = model?.configuredProviders ?? [];
+      if (providers.length > 0) {
+        const keyList = make('div', 'ai-models-list');
+        for (const p of providers) {
+          const row = make('div', 'ai-health-row');
+          row.appendChild(make('strong', null, p.id));
+          row.appendChild(make('span', 'meta-tag', `${p.keyCount} stored key(s)`));
+          keyList.appendChild(row);
+        }
+        box.appendChild(keyList);
+      }
+
+      const actionsRow = make('div', 'ai-actions-row');
+      actionsRow.appendChild(button('Manage Credentials', 'btn btn-primary', () => post({ kind: 'setupOpenManage' })));
+      actionsRow.appendChild(button('+ Add Provider Key', 'btn btn-secondary', () => post({ kind: 'setupOpenAdd' })));
+      box.appendChild(actionsRow);
+
+      el.aiContentBody.appendChild(box);
+    } else if (currentAiSubTab === 'health') {
+      const list = make('div', 'ai-health-list');
+      const endpoints = model?.health ?? [];
+      if (endpoints.length === 0) {
+        list.appendChild(make('p', 'empty-hint', 'No recent provider health records. Probes run automatically during routing or on manual test.'));
+      } else {
+        for (const h of endpoints) {
+          const row = make('div', 'ai-health-row');
+          const titleDiv = make('div', null);
+          titleDiv.appendChild(make('strong', null, h.providerId));
+          if (h.latencyMs) {
+            titleDiv.appendChild(make('span', 'pill pill-sm', `${h.latencyMs}ms`));
+          }
+          row.appendChild(titleDiv);
+
+          const statusBadge = make('span', `health-status is-${h.state || 'healthy'}`, (h.state || 'healthy').toUpperCase());
+          row.appendChild(statusBadge);
+          list.appendChild(row);
+        }
+      }
+
+      const btnProbeAll = button('⚡ Run Connection Probe', 'btn btn-secondary', () => {
+        const first = model?.candidates?.[0];
+        if (first) {
+          post({ kind: 'runPlayground', providerId: first.model.providerId, modelId: first.model.modelId, testType: 'connection' });
+        } else {
+          post({ kind: 'setupOpenAdd' });
+        }
+      });
+      list.appendChild(btnProbeAll);
+
+      el.aiContentBody.appendChild(list);
+    }
+  }
 
   // --- Context Chips Management ---
 
@@ -651,6 +1506,33 @@
       setText(el.contextLabel, '0%');
     }
 
+    // Update Progress Pill
+    if (model.progress) {
+      if (el.progressFill) {
+        el.progressFill.style.width = `${Math.min(100, Math.max(0, model.progress.percent))}%`;
+      }
+      if (el.progressLabel) {
+        setText(el.progressLabel, model.progress.label || 'Ready');
+      }
+    } else {
+      if (el.progressFill) el.progressFill.style.width = '0%';
+      if (el.progressLabel) setText(el.progressLabel, 'Ready');
+    }
+
+    // Update notifications and badge
+    if (model.notifications) {
+      renderNotifications(model.notifications);
+    }
+    // Update settings
+    if (model.settings) {
+      syncSettingsUI(model.settings);
+    }
+    // Update workspace modal info
+    if (model.workspaceInfo) {
+      if (el.wsProjectName) setText(el.wsProjectName, model.workspaceInfo.name || 'Active Project');
+      if (el.wsProjectPath) setText(el.wsProjectPath, model.workspaceInfo.path || '');
+    }
+
     if (model.mode) {
       updateModeUI(model.mode);
     }
@@ -718,9 +1600,149 @@
 
   // --- Notice: Recovery and Pending Decisions ---
 
+  function renderRelayHero(model) {
+    if (!el.relayHero) return;
+    const relay = model.relayInterruption;
+    if (!relay) {
+      show(el.relayHero, false);
+      clear(el.relayHero);
+      return;
+    }
+
+    clear(el.relayHero);
+
+    // 1. Banner
+    const banner = make('div', 'relay-hero-banner');
+    const badgeWrap = make('div', 'relay-hero-badges');
+    badgeWrap.appendChild(make('span', 'relay-badge-tag', '⚡ MODEL INTERRUPTION'));
+    badgeWrap.appendChild(
+      make(
+        'span',
+        'relay-badge-model',
+        `${relay.interruptedModel.providerId} · ${relay.interruptedModel.modelId}`,
+      ),
+    );
+    banner.appendChild(badgeWrap);
+    banner.appendChild(make('h2', 'relay-hero-title', relay.failureTitle));
+    banner.appendChild(make('p', 'relay-hero-desc', relay.failureMessage));
+    el.relayHero.appendChild(banner);
+
+    // 2. Continuity Grid
+    const grid = make('div', 'relay-hero-grid');
+
+    // Progress Card
+    const progressCard = make('div', 'relay-card relay-progress-card');
+    const progressCircle = make('div', 'relay-progress-circle');
+    progressCircle.appendChild(make('span', 'relay-progress-val', `${relay.progressPercent}%`));
+    progressCard.appendChild(progressCircle);
+    progressCard.appendChild(make('div', 'relay-progress-title', 'Verified Progress Preserved'));
+    progressCard.appendChild(
+      make('p', 'relay-progress-subtitle', 'Task state & file writes safe on disk'),
+    );
+    grid.appendChild(progressCard);
+
+    // Verified State Card
+    const verifiedCard = make('div', 'relay-card relay-verified-card');
+    verifiedCard.appendChild(make('h3', 'relay-card-heading', 'Verified on Disk'));
+    const factsList = make('ul', 'relay-facts-list');
+    for (const fact of relay.verifiedFacts) {
+      const item = make('li', 'relay-fact-item');
+      item.appendChild(make('span', 'relay-fact-check', '✓'));
+      item.appendChild(make('span', 'relay-fact-text', fact.label));
+      factsList.appendChild(item);
+    }
+    verifiedCard.appendChild(factsList);
+    grid.appendChild(verifiedCard);
+
+    // Remaining Work Card
+    const remainingCard = make('div', 'relay-card relay-remaining-card');
+    remainingCard.appendChild(make('h3', 'relay-card-heading', 'Remaining Work'));
+    const remainingList = make('ul', 'relay-remaining-list');
+    for (const step of relay.remainingSteps) {
+      const item = make('li', 'relay-step-item');
+      item.appendChild(make('span', 'relay-step-dot', '○'));
+      item.appendChild(make('span', 'relay-step-text', step));
+      remainingList.appendChild(item);
+    }
+    remainingCard.appendChild(remainingList);
+    grid.appendChild(remainingCard);
+
+    el.relayHero.appendChild(grid);
+
+    // 3. Recommended Successor Card
+    const recCard = make('div', 'relay-rec-card');
+    const recHeader = make('div', 'relay-rec-header');
+    recHeader.appendChild(make('span', 'relay-rec-badge', 'RECOMMENDED WORKER'));
+    recHeader.appendChild(
+      make(
+        'span',
+        'relay-rec-name',
+        `${relay.recommendedModel.providerId} / ${relay.recommendedModel.modelId}`,
+      ),
+    );
+    recCard.appendChild(recHeader);
+    recCard.appendChild(make('p', 'relay-rec-reason', relay.recommendationReason));
+    el.relayHero.appendChild(recCard);
+
+    // 4. Visual Relay Pipeline Diagram
+    const pipeline = make('div', 'relay-pipeline');
+    pipeline.appendChild(make('div', 'relay-pipeline-title', 'CROSS-PROVIDER TASK CONTINUITY'));
+    const nodes = make('div', 'relay-pipeline-nodes');
+    for (let i = 0; i < relay.pipelineSteps.length; i++) {
+      const step = relay.pipelineSteps[i];
+      const node = make('div', `relay-pipeline-node is-${step.status}`);
+      node.appendChild(make('span', 'relay-node-label', step.label));
+      nodes.appendChild(node);
+      if (i < relay.pipelineSteps.length - 1) {
+        nodes.appendChild(make('span', 'relay-pipeline-arrow', '→'));
+      }
+    }
+    pipeline.appendChild(nodes);
+    el.relayHero.appendChild(pipeline);
+
+    // 5. Direct Action Controls
+    const actions = make('div', 'relay-actions');
+    const btnRelay = button(
+      `⚡ Relay to ${relay.recommendedModel.modelId}`,
+      'btn btn-primary btn-relay-cta',
+      () => post({ kind: 'relay' }),
+    );
+    actions.appendChild(btnRelay);
+
+    const btnRetry = button(
+      `↻ Retry ${relay.interruptedModel.modelId}`,
+      'btn btn-secondary',
+      () => post({ kind: 'retry' }),
+    );
+    actions.appendChild(btnRetry);
+
+    const btnChoose = button('⇄ Choose Model', 'btn btn-quiet', () =>
+      post({ kind: 'switchModel' }),
+    );
+    actions.appendChild(btnChoose);
+
+    const btnTimeline = button('Show Timeline', 'btn btn-quiet', () =>
+      post({ kind: 'openTimeline' }),
+    );
+    actions.appendChild(btnTimeline);
+
+    el.relayHero.appendChild(actions);
+
+    show(el.relayHero, true);
+  }
+
   function renderNotice(model) {
+    renderRelayHero(model);
+
     const question = model.pendingQuestion;
     const failure = model.lastFailure;
+
+    // If relay interruption is active and there is no question, hide standard notice
+    if (model.relayInterruption && !question) {
+      show(el.notice, false);
+      clear(el.notice);
+      return;
+    }
 
     if (!question && !failure) {
       show(el.notice, false);
@@ -771,13 +1793,30 @@
   // --- Empty / Default Workspace State ---
 
   function renderEmpty(model) {
-    const hasTask = Boolean(model.taskId) && model.nodes && model.nodes.length > 0;
-    show(el.empty, !hasTask);
-    show(el.timeline, hasTask);
-    if (el.executionFollowup) {
-      show(el.executionFollowup, hasTask);
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    if (currentNavTab === 'current') {
+      show(el.empty, !hasTask);
+      show(el.timeline, hasTask);
+      show(el.header, hasTask);
+      if (el.executionFollowup) {
+        show(el.executionFollowup, hasTask);
+      }
+    } else if (currentNavTab === 'composer') {
+      show(el.empty, true);
+      show(el.timeline, false);
+      show(el.header, false);
+      if (el.executionFollowup) {
+        show(el.executionFollowup, false);
+      }
+    } else {
+      show(el.empty, false);
+      show(el.timeline, false);
+      show(el.header, false);
+      if (el.executionFollowup) {
+        show(el.executionFollowup, false);
+      }
     }
-    if (hasTask) {
+    if (hasTask && currentNavTab === 'current') {
       return;
     }
 
@@ -885,6 +1924,423 @@
   }
 
   // --- Timeline & Cards ---
+
+  /**
+   * The recovery narrative.
+   *
+   * Hidden outright when nothing went wrong. The host decides every word,
+   * including whether there is a headline at all — this only paints, and uses
+   * textContent throughout, so nothing a provider said can become markup.
+   */
+  /**
+   * Verification.
+   *
+   * Shown whenever a task exists, because a run that has not happened is itself
+   * worth saying — the panel offers the check rather than implying it passed.
+   * Every word, glyph and tone is decided by the host.
+   */
+  /**
+   * The requirement checklist.
+   *
+   * Hidden when the plan declared no requirements: an empty checklist would
+   * imply there was nothing to do. Every status word and glyph is decided by
+   * the host, so the client cannot accidentally tick something.
+   */
+  /**
+   * The context boundary.
+   *
+   * Shows both halves: what went in, and what was kept out with the reason.
+   * A boundary the user cannot see is one they cannot correct, which is the
+   * whole point of the panel.
+   */
+  /**
+   * Why this model.
+   *
+   * Hidden entirely when the user pinned a model: no explanation is owed for
+   * their own decision, and showing one would imply CodeRelay had overridden it.
+   */
+  /**
+   * The task pipeline.
+   *
+   * Empty for a simple task, and the whole section disappears rather than
+   * showing six rows about a one-file edit. Each row's title carries the
+   * evidence, so hovering answers "why does it say that?".
+   */
+  /**
+   * Skips a DOM rebuild when a list has not actually changed.
+   *
+   * The panels below are repainted on every frame, and a streaming turn
+   * produces a frame every 80ms — but a requirement list or a pipeline changes
+   * a handful of times over a whole task. Rebuilding a few dozen nodes eighty
+   * times a second to produce identical output is the extension host's time
+   * spent on nothing.
+   *
+   * Keyed on a signature rather than deep equality: these are already flat
+   * display strings, so joining the fields that can change is both cheaper than
+   * a structural compare and impossible to get subtly wrong.
+   */
+  const lastPainted = new Map();
+  function unchanged(key, signature) {
+    if (lastPainted.get(key) === signature) {
+      return true;
+    }
+    lastPainted.set(key, signature);
+    return false;
+  }
+
+  function renderStages(model) {
+    const stages = model.stages || [];
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    show(el.stages, currentNavTab === 'current' && hasTask && stages.length > 0);
+    if (stages.length === 0) {
+      return;
+    }
+
+    if (unchanged('stages', stages.map((s) => s.id + s.state).join('|'))) {
+      return;
+    }
+    el.stageList.textContent = '';
+    for (const stage of stages) {
+      const li = document.createElement('li');
+      li.className = 'stage stage-' + stage.state;
+      li.setAttribute('aria-label', stage.spoken);
+      li.title = stage.detail;
+
+      const glyph = document.createElement('span');
+      glyph.className = 'stage-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.textContent = stage.glyph;
+      li.appendChild(glyph);
+
+      const label = document.createElement('span');
+      label.className = 'stage-label';
+      label.textContent = stage.label;
+      li.appendChild(label);
+
+      el.stageList.appendChild(li);
+    }
+  }
+
+  function renderWhyModel(model) {
+    const why = model.whyModel;
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    show(el.whyPanel, currentNavTab === 'current' && hasTask && Boolean(why));
+    if (!why) {
+      return;
+    }
+
+    setText(el.whyLine, why.modelId + ' · ' + why.roleLabel);
+    el.whyPanel.setAttribute('aria-label', why.spoken);
+
+    if (unchanged('why', why.modelId + '|' + why.reasons.join('|'))) {
+      return;
+    }
+    el.whyList.textContent = '';
+    for (const reason of why.reasons) {
+      const li = document.createElement('li');
+      li.className = 'why-row';
+      li.textContent = reason;
+      el.whyList.appendChild(li);
+    }
+
+    show(el.whyRejected, why.rejected.length > 0);
+    el.whyRejectedList.textContent = '';
+    for (const entry of why.rejected) {
+      const li = document.createElement('li');
+      li.textContent = entry;
+      el.whyRejectedList.appendChild(li);
+    }
+  }
+
+  function renderContext(model) {
+    const ctx = model.context;
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    show(el.ctxPanel, currentNavTab === 'current' && hasTask && Boolean(ctx));
+    if (!ctx) {
+      return;
+    }
+    setText(el.ctxSummary, ctx.summary);
+
+    // Everything painted below this point must be in the signature, or a change
+    // to it would be skipped forever.
+    const ctxSignature = [
+      ctx.summary,
+      ctx.files.map((f) => f.path + f.relevance).join(','),
+      ctx.excluded.map((e) => e.label).join(','),
+    ].join('|');
+    if (unchanged('ctx', ctxSignature)) {
+      return;
+    }
+    el.ctxList.textContent = '';
+    for (const file of ctx.files) {
+      const li = document.createElement('li');
+      li.className = 'ctx-row rel-' + file.relevance;
+      li.setAttribute('aria-label', file.spoken);
+      li.title = file.path;
+
+      const name = document.createElement('span');
+      name.className = 'ctx-name';
+      name.textContent = file.name;
+      li.appendChild(name);
+
+      const why = document.createElement('span');
+      why.className = 'ctx-why';
+      why.textContent = file.why;
+      li.appendChild(why);
+
+      el.ctxList.appendChild(li);
+    }
+
+    show(el.ctxExcluded, ctx.excluded.length > 0);
+    el.ctxExcludedList.textContent = '';
+    for (const entry of ctx.excluded) {
+      const li = document.createElement('li');
+      li.className = 'ctx-excluded-row';
+
+      const label = document.createElement('span');
+      label.className = 'ctx-excluded-label';
+      label.textContent = entry.label;
+      li.appendChild(label);
+
+      const reason = document.createElement('span');
+      reason.className = 'ctx-excluded-reason';
+      reason.textContent = entry.reason;
+      li.appendChild(reason);
+
+      el.ctxExcludedList.appendChild(li);
+    }
+  }
+
+  function renderRequirements(model) {
+    const rows = model.requirements || [];
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    show(el.reqPanel, currentNavTab === 'current' && hasTask && rows.length > 0);
+    if (rows.length === 0) {
+      return;
+    }
+    setText(el.reqSummary, model.requirementSummary || '');
+
+    if (unchanged('req', rows.map((r) => r.id + r.status).join('|'))) {
+      return;
+    }
+    el.reqList.textContent = '';
+    for (const row of rows) {
+      const li = document.createElement('li');
+      li.className = 'req-row tone-' + row.tone;
+      li.setAttribute('aria-label', row.spoken);
+
+      const glyph = document.createElement('span');
+      glyph.className = 'req-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.textContent = row.glyph;
+      li.appendChild(glyph);
+
+      const body = document.createElement('span');
+      body.className = 'req-body';
+
+      const text = document.createElement('span');
+      text.className = 'req-text';
+      text.textContent = row.text;
+      body.appendChild(text);
+
+      const evidence = document.createElement('span');
+      evidence.className = 'req-evidence';
+      evidence.textContent = row.evidence;
+      body.appendChild(evidence);
+
+      li.appendChild(body);
+      el.reqList.appendChild(li);
+    }
+  }
+
+  function renderVerify(model) {
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    show(el.verifyPanel, currentNavTab === 'current' && hasTask);
+    if (!hasTask) {
+      return;
+    }
+
+    show(el.btnVerify, !model.verifying);
+    show(el.btnVerifyStop, Boolean(model.verifying));
+
+    const v = model.verification;
+    if (model.verifying) {
+      setText(el.verifyGlyph, '·');
+      setText(el.verifyLabel, 'Verifying…');
+      setText(el.verifyDetail, 'Running the checks this project declares.');
+      setText(el.verifyTotal, '');
+      el.verifyPanel.className = 'verify-panel tone-muted';
+    } else if (!v) {
+      // Never a tick. Nothing has been run, and the panel says exactly that.
+      setText(el.verifyGlyph, '○');
+      setText(el.verifyLabel, 'Not verified yet');
+      setText(el.verifyDetail, "Run the project's own checks to confirm the work.");
+      setText(el.verifyTotal, '');
+      el.verifyPanel.className = 'verify-panel tone-muted';
+    } else {
+      setText(el.verifyGlyph, v.verdict.glyph);
+      setText(el.verifyLabel, v.verdict.label);
+      setText(el.verifyDetail, v.verdict.detail);
+      setText(el.verifyTotal, v.totalLabel || '');
+      el.verifyPanel.className = 'verify-panel tone-' + v.verdict.tone;
+      el.verifyPanel.setAttribute('aria-label', v.verdict.spoken);
+    }
+
+    const rows = v ? v.rows : [];
+    const verifySignature = [
+      v ? v.verdict.label : 'none',
+      v ? v.unavailable || '' : '',
+      rows.map((r) => r.id + r.tone + r.summary).join(','),
+    ].join('|');
+    if (unchanged('verify', verifySignature)) {
+      return;
+    }
+    el.verifyList.textContent = '';
+    for (const row of rows) {
+      const li = document.createElement('li');
+      li.className = 'verify-row tone-' + row.tone;
+      li.setAttribute('aria-label', row.spoken);
+
+      const head = document.createElement('div');
+      head.className = 'verify-row-head';
+
+      const glyph = document.createElement('span');
+      glyph.className = 'verify-row-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.textContent = row.glyph;
+      head.appendChild(glyph);
+
+      const name = document.createElement('span');
+      name.className = 'verify-row-label';
+      name.textContent = row.label;
+      head.appendChild(name);
+
+      const summary = document.createElement('span');
+      summary.className = 'verify-row-summary';
+      summary.textContent = row.summary;
+      head.appendChild(summary);
+
+      if (row.aside) {
+        const aside = document.createElement('span');
+        aside.className = 'verify-row-aside';
+        aside.textContent = row.aside;
+        head.appendChild(aside);
+      }
+      li.appendChild(head);
+
+      // Output is collapsed: a failing build is thousands of lines, and the
+      // summary above is what a reader needs first.
+      if (row.output) {
+        const details = document.createElement('details');
+        const summaryEl = document.createElement('summary');
+        summaryEl.textContent = row.command;
+        details.appendChild(summaryEl);
+        const pre = document.createElement('pre');
+        pre.className = 'verify-output';
+        pre.textContent = row.output;
+        details.appendChild(pre);
+        li.appendChild(details);
+      }
+      el.verifyList.appendChild(li);
+    }
+
+    const unavailable = v ? v.unavailable : null;
+    if (unavailable) {
+      setText(el.verifyUnavailable, unavailable);
+      show(el.verifyUnavailable, true);
+    } else {
+      show(el.verifyUnavailable, false);
+    }
+  }
+
+  function renderRecovery(model) {
+    const events = model.recovery || [];
+    const summary = model.recoverySummary;
+    const hasTask = Boolean(model.taskId && (model.live || (model.nodes && model.nodes.length > 0) || model.header));
+    const isRecoveryTab = currentNavTab === 'recovery';
+    const isCurrentWithRecovery = currentNavTab === 'current' && hasTask && Boolean(summary && events.length > 0);
+
+    if (!isRecoveryTab && !isCurrentWithRecovery) {
+      show(el.recoveryPanel, false);
+      return;
+    }
+    show(el.recoveryPanel, true);
+    setText(el.recoverySummary, summary || 'No recovery events recorded for this session.');
+
+    // null and 0 are different answers: "not a git repository" is not "no
+    // snapshots were taken", so only a real count is shown.
+    if (typeof model.checkpointCount === 'number') {
+      setText(
+        el.recoveryCheckpoints,
+        model.checkpointCount === 1 ? '1 checkpoint' : model.checkpointCount + ' checkpoints',
+      );
+      show(el.recoveryCheckpoints, true);
+    } else {
+      show(el.recoveryCheckpoints, false);
+    }
+
+    if (el.selectTargetWorker && model.candidates && model.candidates.length > 0) {
+      if (el.selectTargetWorker.childElementCount === 0) {
+        clear(el.selectTargetWorker);
+        for (const c of model.candidates) {
+          const opt = document.createElement('option');
+          opt.value = `${c.model.providerId}/${c.model.modelId}`;
+          opt.textContent = `${c.model.providerId} / ${c.model.modelId}`;
+          if (c.isSelected) opt.selected = true;
+          el.selectTargetWorker.appendChild(opt);
+        }
+      }
+    }
+    if (el.relayConfidenceBadge && model.continuityScore) {
+      setText(el.relayConfidenceBadge, model.continuityScore.health);
+      el.relayConfidenceBadge.className = 'confidence-badge is-' + model.continuityScore.health.toLowerCase();
+    }
+    if (el.relayRationaleText && model.continuityScore) {
+      setText(el.relayRationaleText, model.continuityScore.summary);
+    }
+
+    // Rebuilt only when the event count changed. A recovery log grows by whole
+    // events and never edits one in place, so this is enough to avoid
+    // repainting the list on every token that streams.
+    if (el.recoveryList.childElementCount === events.length) {
+      return;
+    }
+    el.recoveryList.textContent = '';
+    for (const event of events) {
+      const li = document.createElement('li');
+      li.className = 'recovery-row tone-' + event.tone;
+      li.setAttribute('aria-label', event.spoken);
+
+      const time = document.createElement('span');
+      time.className = 'recovery-time';
+      time.textContent = event.time;
+      li.appendChild(time);
+
+      const glyph = document.createElement('span');
+      glyph.className = 'recovery-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.textContent = event.glyph;
+      li.appendChild(glyph);
+
+      const body = document.createElement('span');
+      body.className = 'recovery-body';
+
+      const label = document.createElement('span');
+      label.className = 'recovery-label';
+      label.textContent = event.label;
+      body.appendChild(label);
+
+      if (event.detail) {
+        const detail = document.createElement('span');
+        detail.className = 'recovery-detail';
+        detail.textContent = event.detail;
+        body.appendChild(detail);
+      }
+
+      li.appendChild(body);
+      el.recoveryList.appendChild(li);
+    }
+  }
 
   function renderTimeline(model) {
     const seen = new Set();
@@ -1247,6 +2703,24 @@
       const matches = MENTION_TYPES.filter((m) => m.tag.startsWith(query));
       if (matches.length > 0) {
         showAutocomplete(matches, (item) => {
+          if (item.tag === '@file') {
+            post({ kind: 'attachFile' });
+            el.prompt.value = before.slice(0, atIndex) + val.slice(pos);
+            el.prompt.focus();
+            autosize();
+            persist();
+            show(el.autocompletePopup, false);
+            return;
+          }
+          if (item.tag === '@problems' || item.tag === '@git' || item.tag === '@terminal' || item.tag === '@folder') {
+            addContextChip(item.tag);
+            el.prompt.value = before.slice(0, atIndex) + val.slice(pos);
+            el.prompt.focus();
+            autosize();
+            persist();
+            show(el.autocompletePopup, false);
+            return;
+          }
           const after = val.slice(pos);
           el.prompt.value = before.slice(0, atIndex) + item.tag + ' ' + after;
           el.prompt.focus();
@@ -1365,6 +2839,7 @@
     const chipsPrefix = attachedChips.size > 0 ? [...attachedChips].join(' ') + ' ' : '';
     const objective = chipsPrefix + raw;
     post({ kind: 'start', objective, model: null });
+    switchTab('current');
     el.prompt.value = '';
     attachedChips.clear();
     renderContextChips();
@@ -1430,14 +2905,28 @@
     });
   }
 
+  if (el.btnFollowupSend) {
+    el.btnFollowupSend.addEventListener('click', (e) => {
+      e.preventDefault();
+      const raw = el.followupPrompt ? el.followupPrompt.value.trim() : '';
+      if (!raw) return;
+      post({ kind: 'start', objective: raw, model: null });
+      if (el.followupPrompt) el.followupPrompt.value = '';
+    });
+  }
+
   el.setupPrimary.addEventListener('click', () => post({ kind: 'setupPrimary' }));
   el.setupBack.addEventListener('click', () => post({ kind: 'setupBack' }));
-  el.setupCancel.addEventListener('click', () => post({ kind: 'setupCancel' }));
+  el.setupCancel.addEventListener('click', () => {
+    setupSecretDraft = '';
+    post({ kind: 'setupCancel' });
+  });
 
   // --- Guided Setup & Provider Manager ---
 
   let setupFocus = null;
   let showPassword = false;
+  let setupSecretDraft = '';
 
   function setupField(field) {
     const wrap = make('label', 'field');
@@ -1454,7 +2943,7 @@
     const input = document.createElement('input');
     input.className = 'field-input' + (field.secret ? ' field-input-secret' : '');
     input.type = field.secret ? (showPassword ? 'text' : 'password') : 'text';
-    input.value = field.value;
+    input.value = field.secret ? (setupSecretDraft || '') : (field.value || '');
     input.placeholder = field.placeholder;
     input.autocomplete = 'off';
     input.spellcheck = false;
@@ -1462,6 +2951,9 @@
     input.setAttribute('aria-describedby', 'hint-' + field.id);
     input.addEventListener('input', () => {
       setupFocus = field.id;
+      if (field.secret) {
+        setupSecretDraft = input.value;
+      }
       post({ kind: 'setupField', field: field.id, value: input.value });
     });
     input.addEventListener('keydown', (event) => {
@@ -1512,7 +3004,10 @@
       card.appendChild(preview);
     }
 
-    card.addEventListener('click', () => post({ kind: 'setupChoose', presetKey: choice.key }));
+    card.addEventListener('click', () => {
+      setupSecretDraft = '';
+      post({ kind: 'setupChoose', presetKey: choice.key });
+    });
     return card;
   }
 
@@ -1612,10 +3107,124 @@
     return item;
   }
 
+  /**
+   * The credential pool for the endpoint being configured.
+   *
+   * Rows are listed in the order the pool would try them, so the list reads
+   * top-to-bottom as "this one, then this one". Every word, glyph and status
+   * comes from the host — the client cannot decide a key is healthy.
+   *
+   * No part of a key is rendered. A credential is identified by its label.
+   */
+  function renderKeyPool(pool) {
+    show(el.keypool, Boolean(pool) && pool.rows.length > 0);
+    if (!pool || pool.rows.length === 0) {
+      return;
+    }
+
+    setText(el.keypoolSummary, pool.summary || '');
+    if (pool.blocked) {
+      setText(el.keypoolBlocked, pool.blocked);
+      show(el.keypoolBlocked, true);
+    } else {
+      show(el.keypoolBlocked, false);
+    }
+
+    el.keypoolList.textContent = '';
+    for (const row of pool.rows) {
+      const li = document.createElement('li');
+      li.className = 'keypool-row is-' + row.status + (row.next ? ' is-next' : '');
+      li.setAttribute('aria-label', row.spoken);
+
+      const glyph = document.createElement('span');
+      glyph.className = 'keypool-glyph';
+      glyph.setAttribute('aria-hidden', 'true');
+      glyph.textContent = row.glyph;
+      li.appendChild(glyph);
+
+      const body = document.createElement('span');
+      body.className = 'keypool-body';
+
+      const top = document.createElement('span');
+      top.className = 'keypool-top';
+      const label = document.createElement('span');
+      label.className = 'keypool-label';
+      label.textContent = row.label;
+      top.appendChild(label);
+      if (row.next) {
+        const badge = document.createElement('span');
+        badge.className = 'keypool-badge';
+        badge.textContent = 'next';
+        top.appendChild(badge);
+      }
+      body.appendChild(top);
+
+      const status = document.createElement('span');
+      status.className = 'keypool-status';
+      status.textContent = row.detail ? row.statusText + ' · ' + row.detail : row.statusText;
+      body.appendChild(status);
+      li.appendChild(body);
+
+      const actions = document.createElement('span');
+      actions.className = 'keypool-actions';
+
+      // A rejected key cannot be toggled back on — the provider refused it, and
+      // the host enforces that. Offering the control would be a dead button.
+      if (row.status !== 'rejected') {
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'keypool-btn';
+        const turningOn = row.status === 'off';
+        toggle.textContent = turningOn ? 'Turn on' : 'Turn off';
+        toggle.title = turningOn ? 'Return this key to rotation' : 'Stop using this key';
+        toggle.addEventListener('click', () =>
+          post({ kind: 'keyToggle', credentialId: row.credentialId, enabled: turningOn }),
+        );
+        actions.appendChild(toggle);
+      }
+
+      const testBtn = document.createElement('button');
+      testBtn.type = 'button';
+      testBtn.className = 'keypool-btn';
+      testBtn.textContent = 'Test';
+      testBtn.title = 'Send one real request using this key only';
+      testBtn.addEventListener('click', () =>
+        post({ kind: 'keyTest', credentialId: row.credentialId }),
+      );
+      actions.appendChild(testBtn);
+
+      if (row.canPromote) {
+        const promote = document.createElement('button');
+        promote.type = 'button';
+        promote.className = 'keypool-btn';
+        promote.textContent = 'Prefer';
+        promote.title = 'Try this key first';
+        promote.addEventListener('click', () =>
+          post({ kind: 'keyPromote', credentialId: row.credentialId }),
+        );
+        actions.appendChild(promote);
+      }
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'keypool-btn keypool-btn-danger';
+      remove.textContent = 'Remove';
+      remove.title = 'Delete this key from the OS keychain';
+      remove.addEventListener('click', () =>
+        post({ kind: 'keyRemove', credentialId: row.credentialId }),
+      );
+      actions.appendChild(remove);
+
+      li.appendChild(actions);
+      el.keypoolList.appendChild(li);
+    }
+  }
+
   function renderSetup(model) {
+    renderKeyPool(model.keyPool);
     el.setup.hidden = false;
-    for (const node of [el.topNav, el.header, el.notice, el.empty, el.timeline, el.composer]) {
-      node.hidden = true;
+    for (const node of [el.topNav, el.header, el.notice, el.empty, el.timeline, el.composer, el.navTabs, el.settingsPanel, el.aiPanel]) {
+      if (node) node.hidden = true;
     }
 
     if (model.step === 'manage') {
@@ -1685,6 +3294,29 @@
 
     // CONNECT STEP
     if (model.step === 'connect') {
+      const existingForm = el.setupBody.querySelector('.field-grid');
+      if (existingForm) {
+        for (const field of model.fields) {
+          const inp = existingForm.querySelector('#field-' + field.id);
+          if (inp) {
+            inp.placeholder = field.placeholder;
+            if (document.activeElement !== inp) {
+              inp.value = field.secret ? (setupSecretDraft || '') : (field.value || '');
+            }
+          }
+          const hint = existingForm.querySelector('#hint-' + field.id);
+          if (hint && field.hint) {
+            hint.textContent = field.hint;
+          }
+        }
+        el.setupBack.hidden = !model.canGoBack;
+        el.setupPrimary.textContent = model.primaryLabel;
+        el.setupPrimary.hidden = false;
+        el.setupPrimary.disabled = model.blockedReason !== null || model.busy !== null;
+        el.setupBlocked.textContent = model.blockedReason || '';
+        return;
+      }
+
       const form = make('div', 'field-grid');
       for (const field of model.fields) {
         form.appendChild(setupField(field));
@@ -1790,11 +3422,17 @@
       const actions = make('div', 'ready-actions');
       const startBtn = make('button', 'btn btn-primary', 'Start Coding');
       startBtn.type = 'button';
-      startBtn.addEventListener('click', () => post({ kind: 'setupCancel' }));
+      startBtn.addEventListener('click', () => {
+        setupSecretDraft = '';
+        post({ kind: 'setupCancel' });
+      });
 
       const manageBtn = make('button', 'btn btn-quiet', 'Manage Providers');
       manageBtn.type = 'button';
-      manageBtn.addEventListener('click', () => post({ kind: 'setupOpenManage' }));
+      manageBtn.addEventListener('click', () => {
+        setupSecretDraft = '';
+        post({ kind: 'setupOpenManage' });
+      });
 
       actions.appendChild(startBtn);
       actions.appendChild(manageBtn);
@@ -1826,8 +3464,89 @@
     }
     el.setup.hidden = true;
     setupFocus = null;
+    setupSecretDraft = '';
     el.topNav.hidden = false;
-    el.composer.hidden = false;
+    if (el.navTabs) el.navTabs.hidden = false;
+    switchTab(currentNavTab, false);
+  }
+
+  function renderContinuity(model) {
+    if (!el.continuityScoreVal || !model) return;
+    const cs = model.continuityScore;
+    if (cs) {
+      setText(el.continuityScoreVal, String(cs.score));
+      setText(el.continuityHealthLabel, cs.health);
+      if (el.continuityDot) {
+        el.continuityDot.className = 'continuity-dot is-' + cs.health.toLowerCase();
+      }
+      if (cs.breakdown) {
+        setText(el.statCpInt, `${cs.breakdown.checkpointIntegrity.score}/${cs.breakdown.checkpointIntegrity.max}`);
+        setText(el.statReqCov, `${cs.breakdown.requirementCoverage.score}/${cs.breakdown.requirementCoverage.max}`);
+        setText(el.statVerRec, `${cs.breakdown.verificationRecency.score}/${cs.breakdown.verificationRecency.max}`);
+        setText(el.statWorkDiv, `${cs.breakdown.workerDiversity.score}/${cs.breakdown.workerDiversity.max}`);
+        setText(el.statActIdem, `${cs.breakdown.actionIdempotency.score}/${cs.breakdown.actionIdempotency.max}`);
+      }
+      if (el.continuitySummaryNote && cs.summary) {
+        setText(el.continuitySummaryNote, cs.summary);
+      }
+    } else {
+      setText(el.continuityScoreVal, '100');
+      setText(el.continuityHealthLabel, 'HEALTHY');
+      if (el.continuityDot) {
+        el.continuityDot.className = 'continuity-dot is-healthy';
+      }
+      setText(el.statCpInt, '20/20');
+      setText(el.statReqCov, '25/25');
+      setText(el.statVerRec, '20/20');
+      setText(el.statWorkDiv, '15/15');
+      setText(el.statActIdem, '20/20');
+      if (el.continuitySummaryNote) {
+        setText(el.continuitySummaryNote, 'Task state is resilient and relay-ready.');
+      }
+    }
+  }
+
+  function renderBenchmarkLab(model) {
+    if (!el.benchmarksPanel) return;
+    if (model.benchmarkResults && el.benchmarkTableBody) {
+      clear(el.benchmarkTableBody);
+      const res = model.benchmarkResults.results;
+      if (res) {
+        const rows = [
+          { label: 'Single Worker', p: res.normal_execution, cls: 'row-single' },
+          { label: 'Naive Fallback', p: res.simple_fallback, cls: 'row-naive' },
+          { label: 'CodeRelay Relay', p: res.coderelay_recovery, cls: 'row-coderelay' }
+        ];
+        for (const r of rows) {
+          if (!r.p) continue;
+          const tr = make('tr', r.cls);
+          tr.appendChild(make('td', null, r.label));
+          tr.appendChild(make('td', null, r.p.completed ? '✅ Succeeded' : '❌ Failed'));
+          tr.appendChild(make('td', null, `${r.p.recoveryLatencyMs} ms`));
+          tr.appendChild(make('td', null, `${r.p.duplicateActionsPrevented} Prevented`));
+          tr.appendChild(make('td', null, `${r.p.tokensUsed.toLocaleString()} tokens`));
+          tr.appendChild(make('td', null, r.p.verifiedByEvidence ? '✅ Verified' : '❌ Unverified'));
+          el.benchmarkTableBody.appendChild(tr);
+        }
+      }
+    }
+    if (model.chaosReport && el.chaosResultsDisplay) {
+      const c = model.chaosReport;
+      // `finalVerificationPassed` is null when no verification ran. A ternary
+      // rendered that as FAILED, which is a different and equally untrue claim
+      // — nothing ran, so nothing passed and nothing failed.
+      const verdict =
+        c.finalVerificationPassed === null || c.finalVerificationPassed === undefined
+          ? 'not run'
+          : c.finalVerificationPassed
+            ? 'passed'
+            : 'failed';
+      el.chaosResultsDisplay.textContent =
+        `[${c.failureType}] frozen: ${c.executionFrozen} · relay package: ${c.recoveryPackageCreated}` +
+        ` · actions carried over: ${c.duplicatesPrevented} · verification: ${verdict}` +
+        ` (${c.timeToRecoverMs}ms)`;
+      el.chaosResultsDisplay.title = c.details;
+    }
   }
 
   window.addEventListener('message', (event) => {
@@ -1835,13 +3554,34 @@
     if (!model) {
       return;
     }
+    if (model.kind === 'attachContext') {
+      if (model.chip) {
+        addContextChip(model.chip);
+      }
+      return;
+    }
     if (model.kind === 'enhancedPrompt') {
       el.btnEnhance.textContent = '✨ Enhance';
       el.btnEnhance.disabled = false;
       if (typeof model.text === 'string') {
+        pendingEnhancedText = model.text;
+        if (el.enhanceCard && el.enhanceCardBody) {
+          renderMarkdown(el.enhanceCardBody, model.text);
+          show(el.enhanceCard, true);
+        }
         el.prompt.value = model.text;
         autosize();
         persist();
+      }
+      return;
+    }
+    if (model.kind === 'approvalRequest') {
+      activeApprovalId = model.requestId;
+      if (el.approvalCard) {
+        setText(el.approvalRisk, model.risk || 'HIGH RISK');
+        setText(el.approvalReason, model.reason || 'Command execution requires confirmation');
+        setText(el.approvalCommand, model.command || '');
+        show(el.approvalCard, true);
       }
       return;
     }
@@ -1854,11 +3594,28 @@
     }
     hideSetup();
     state = model;
+    if (model.activeNavTab && model.activeNavTab !== currentNavTab) {
+      switchTab(model.activeNavTab, false);
+    } else {
+      switchTab(currentNavTab, false);
+    }
     renderHeader(model);
     renderNotice(model);
     renderEmpty(model);
+    renderStages(model);
+    renderWhyModel(model);
+    renderContext(model);
+    renderRequirements(model);
+    renderVerify(model);
+    renderRecovery(model);
+    renderContinuity(model);
     renderTimeline(model);
     renderComposer(model);
+    if (currentNavTab === 'ai') {
+      renderAiPanel(model);
+    } else if (currentNavTab === 'benchmarks') {
+      renderBenchmarkLab(model);
+    }
   });
 
   autosize();

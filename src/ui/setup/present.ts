@@ -15,6 +15,7 @@ import {
   type SetupState,
   type SetupStep,
 } from './wizard.js';
+import type { KeyPool } from './keys.js';
 
 export interface ProviderChoiceModel {
   readonly key: string;
@@ -95,6 +96,13 @@ export interface SetupViewModel {
   readonly primaryLabel: string;
   readonly canGoBack: boolean;
   readonly savedSummary: string | null;
+  /**
+   * The credential pool for the endpoint being configured.
+   *
+   * Null on steps where no endpoint is selected. The panel previously showed
+   * only a count, which cannot say which key is cooling or which one runs next.
+   */
+  readonly keyPool: KeyPool | null;
 }
 
 const STEP_LABELS: readonly { readonly id: SetupStep; readonly label: string }[] = [
@@ -104,7 +112,17 @@ const STEP_LABELS: readonly { readonly id: SetupStep; readonly label: string }[]
   { id: 'saved', label: 'Ready' },
 ];
 
-export function presentSetup(state: SetupState): SetupViewModel {
+export function presentSetup(
+  state: SetupState,
+  /**
+   * The credential pool for the endpoint in hand, or null when none applies.
+   *
+   * Passed in rather than read here because this module is pure and reading the
+   * pool means touching `CredentialManager`. The controller owns that and hands
+   * the result down already reduced to rows.
+   */
+  keyPool: KeyPool | null = null,
+): SetupViewModel {
   const preset = presetOf(state);
   const index = STEP_LABELS.findIndex((s) => s.id === state.step);
 
@@ -141,6 +159,7 @@ export function presentSetup(state: SetupState): SetupViewModel {
       state.step === 'models' ||
       (state.step === 'provider' && state.configuredProviders.length > 0),
     savedSummary: state.step === 'saved' ? savedSummary(state) : null,
+    keyPool,
   };
 }
 

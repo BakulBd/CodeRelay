@@ -545,3 +545,150 @@ test('a failed write does not wedge later ones', async () => {
  * a header-only helper cannot express a key in a query string or a signature
  * over the body. This module's contract stops at handing out a live secret.
  */
+
+// --- priority and manual enable/disable ------------------------------------
+// Added when the credential pool gained user-facing controls. The distinction
+// that matters throughout: a key the *provider* rejected and a key the *user*
+// parked are different states needing different fixes, and must never be
+// collapsed into one.
+
+test('new keys are peers, so rotation still spreads across them', async () => {
+  const h = harness();
+  await h.manager.add('anthropic', 'first', 'k1');
+  await h.manager.add('anthropic', 'second', 'k2');
+
+  const records = h.manager.records();
+  assert.equal(
+    records[0]?.priority,
+    records[1]?.priority,
+    'a key must not outrank another merely by having been pasted in first',
+  );
+});
+
+test('priority orders keys the user has actually ordered', async () => {
+  const h = harness();
+  const first = await h.manager.add('anthropic', 'work', 'k1');
+  const second = await h.manager.add('anthropic', 'personal', 'k2');
+
+  await h.manager.reorder('anthropic', [second.credentialId, first.credentialId]);
+
+  const chosen = await h.manager.next('anthropic');
+  assert.ok(chosen.t === 'credential');
+  assert.equal(chosen.ref.credentialId, second.credentialId, 'the promoted key goes first');
+
+  // And it stays first: an explicit preference is not a rotation slot.
+  const again = await h.manager.next('anthropic');
+  assert.ok(again.t === 'credential');
+  assert.equal(again.ref.credentialId, second.credentialId);
+});
+
+test('health outranks priority, so a preferred key that is failing is skipped', async () => {
+  const h = harness();
+  const preferred = await h.manager.add('anthropic', 'preferred', 'k1');
+  const other = await h.manager.add('anthropic', 'other', 'k2');
+  await h.manager.reorder('anthropic', [preferred.credentialId, other.credentialId]);
+
+  await h.manager.reportFailure(preferred.credentialId, THROTTLED);
+
+  const chosen = await h.manager.next('anthropic');
+  assert.ok(chosen.t === 'credential');
+  assert.equal(
+    chosen.ref.credentialId,
+    other.credentialId,
+    'preference is between keys that would both work; it cannot resurrect one that will not',
+  );
+});
+
+test('a key the user turns off is not offered', async () => {
+  const h = harness();
+  const off = await h.manager.add('anthropic', 'parked', 'k1');
+  const on = await h.manager.add('anthropic', 'active', 'k2');
+
+  await h.manager.setEnabled(off.credentialId, false);
+
+  for (let i = 0; i < 4; i += 1) {
+    const chosen = await h.manager.next('anthropic');
+    assert.ok(chosen.t === 'credential');
+    assert.equal(chosen.ref.credentialId, on.credentialId);
+  }
+});
+
+test('turning every key off is reported differently from every key being rejected', async () => {
+  const h = harness();
+  const only = await h.manager.add('anthropic', 'only', 'k1');
+  await h.manager.setEnabled(only.credentialId, false);
+
+  const parked = await h.manager.next('anthropic');
+  assert.ok(parked.t === 'none');
+  assert.match(parked.reason, /turned off/i);
+  assert.doesNotMatch(parked.reason, /rejected/i, 'a switch the user threw is not a fault');
+
+  // A rejected key must still read as a fault to fix.
+  const h2 = harness();
+  const bad = await h2.manager.add('anthropic', 'bad', 'k1');
+  await h2.manager.reportFailure(bad.credentialId, AUTH_FAILURE);
+  const rejected = await h2.manager.next('anthropic');
+  assert.ok(rejected.t === 'none');
+  assert.match(rejected.reason, /rejected/i);
+});
+
+test('turning a key back on returns it to rotation', async () => {
+  const h = harness();
+  const key = await h.manager.add('anthropic', 'only', 'k1');
+  await h.manager.setEnabled(key.credentialId, false);
+  await h.manager.setEnabled(key.credentialId, true);
+
+  const chosen = await h.manager.next('anthropic');
+  assert.ok(chosen.t === 'credential');
+  assert.equal(chosen.ref.credentialId, key.credentialId);
+});
+
+test('enabling cannot overrule a provider rejection', async () => {
+  const h = harness();
+  const key = await h.manager.add('anthropic', 'bad', 'k1');
+  await h.manager.reportFailure(key.credentialId, AUTH_FAILURE);
+
+  await h.manager.setEnabled(key.credentialId, true);
+
+  const chosen = await h.manager.next('anthropic');
+  assert.ok(
+    chosen.t === 'none',
+    'a toggle must not put a key the provider refused back into rotation',
+  );
+  assert.equal(h.manager.find(key.credentialId)?.disabledReason !== null, true);
+});
+
+test('records stored before priority existed still sort deterministically', async () => {
+  const h = harness();
+  // A metadata blob as an older version would have written it.
+  await h.metadata.update('coderelay.credentials', [
+    {
+      providerId: 'anthropic',
+      credentialId: 'legacy-1',
+      label: 'legacy',
+      addedAt: '2026-01-01T00:00:00Z',
+      disabledReason: null,
+      coolingUntil: null,
+      consecutiveFailures: 0,
+      lastUsedAt: null,
+      lastFailureReason: null,
+    },
+  ]);
+
+  const record = h.manager.records()[0];
+  assert.equal(typeof record?.priority, 'number', 'an undefined priority yields NaN in the sort');
+  assert.equal(record?.userDisabled, false);
+});
+
+test('reordering only touches the provider named', async () => {
+  const h = harness();
+  const a = await h.manager.add('anthropic', 'a', 'k1');
+  const b = await h.manager.add('anthropic', 'b', 'k2');
+  const other = await h.manager.add('openai', 'c', 'k3');
+
+  await h.manager.reorder('anthropic', [b.credentialId, a.credentialId]);
+
+  assert.equal(h.manager.find(other.credentialId)?.priority, 0, 'openai was not reordered');
+  assert.equal(h.manager.find(b.credentialId)?.priority, 0);
+  assert.equal(h.manager.find(a.credentialId)?.priority, 1);
+});

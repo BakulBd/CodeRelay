@@ -37,6 +37,11 @@ test('every colour comes from a VS Code variable or the forced-colors keywords',
     const v = (value ?? '').trim();
     const ok =
       v.includes('--vscode-') ||
+      // The semantic layer: components ask for a *meaning* and only `:root`
+      // knows which VS Code variable carries it. Asserted below to resolve to
+      // one, which is a stronger guarantee than each component spelling it out
+      // and four of them spelling it differently.
+      /var\(--(ok|warn|danger|muted|accent|border)\)/.test(v) ||
       v.includes('currentColor') ||
       v === 'transparent' ||
       v === 'inherit' ||
@@ -95,7 +100,10 @@ test('reduced motion and high contrast are both honoured', () => {
 
 test('typography is inherited from the editor rather than imposed', () => {
   assert.match(css, /font-family:\s*var\(--vscode-font-family\)/);
-  assert.match(css, /font-size:\s*var\(--vscode-font-size\)/);
+  // The base size reaches components through the type scale rather than being
+  // written out at each site; that the scale derives from the editor's own
+  // setting is asserted separately, against `:root`.
+  assert.match(css, /--fs-base:\s*var\(--vscode-font-size\)/);
   // No absolute font size anywhere: the user's own setting is the base, and
   // everything else is a ratio of it.
   const absolute = css.match(/font-size:\s*\d+(\.\d+)?(px|pt|rem|em)\b/g) ?? [];
@@ -118,6 +126,64 @@ test('the setup panel is styled entirely from theme tokens', () => {
     assert.ok(
       setup.includes(`${selector}:focus`),
       `${selector} has no focus style, so it cannot be used from the keyboard`,
+    );
+  }
+});
+
+
+// --- the semantic token layer ---------------------------------------------
+// Components name a meaning; `:root` maps it to a VS Code variable. These
+// assertions are what make that indirection safe rather than a hiding place.
+
+test('every semantic token resolves to a VS Code variable', () => {
+  const root = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+
+  for (const token of ['--ok', '--warn', '--danger', '--muted', '--accent']) {
+    const declaration = new RegExp(`${token}:\\s*([^;]+);`).exec(root);
+    assert.ok(declaration !== null, `${token} is used but never defined`);
+    assert.match(
+      declaration[1] ?? '',
+      /var\(--vscode-/,
+      `${token} must resolve to a theme variable, not a literal`,
+    );
+  }
+});
+
+test('the type scale is relative to the editor font, and has few enough steps to read as a scale', () => {
+  const root = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+
+  for (const token of ['--fs-xs', '--fs-sm', '--fs-md', '--fs-base', '--fs-lg', '--fs-xl']) {
+    const declaration = new RegExp(`${token}:\\s*([^;]+);`).exec(root);
+    assert.ok(declaration !== null, `${token} is used but never defined`);
+    assert.match(
+      declaration[1] ?? '',
+      /var\(--vscode-font-size\)/,
+      `${token} must scale with the user's own font size`,
+    );
+  }
+
+  // The point of a scale is that its steps are distinguishable. Twenty-seven
+  // multipliers — 0.9, 0.92, 0.95, 0.96 among them — differ by under a pixel at
+  // a 13px base and read as noise rather than hierarchy.
+  const used = new Set(
+    [...css.matchAll(/font-size:\s*var\((--fs-[a-z]+)\)/g)].map((m) => m[1]),
+  );
+  assert.ok(used.size <= 6, `${used.size} type steps in use; a scale needs a handful`);
+});
+
+test('no component spells a semantic colour itself', () => {
+  // Outside `:root`, asking for `--vscode-testing-iconPassed` directly is how
+  // two adjacent rows end up rendering different greens.
+  const body = css.slice(css.indexOf('}', css.indexOf(':root {')));
+  for (const raw of [
+    '--vscode-testing-iconPassed',
+    '--vscode-charts-green',
+    '--vscode-errorForeground',
+    '--vscode-descriptionForeground',
+  ]) {
+    assert.ok(
+      !body.includes(raw),
+      `${raw} is spelled directly in a component; use the semantic token`,
     );
   }
 });

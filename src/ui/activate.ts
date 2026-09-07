@@ -21,6 +21,10 @@ import {
 } from 'vscode';
 import { CheckpointStore, execGitRunner } from '../checkpoint/git.js';
 import type { ModelRef, TaskId } from '../core/types.js';
+import type { EndpointHealth } from '../policy/health.js';
+import type { VerificationRun } from '../verify/run.js';
+import type { ContextSet } from '../context/select.js';
+import type { Selection } from '../policy/select.js';
 import type { Candidate } from '../policy/route.js';
 import type { ProviderConfig } from '../providers/catalog.js';
 import { StatusBar } from './statusBar.js';
@@ -34,9 +38,17 @@ import {
 import { ModelsTreeProvider } from './view/modelsTree.js';
 import { TASK_VIEW_ID, TaskViewProvider } from './view/taskView.js';
 import { TasksTreeProvider } from './view/tasksTree.js';
-import type { BlockedReason, SessionSummary } from './webview/present.js';
+import type { BlockedReason, SessionSummary, ConfiguredProviderItem } from './webview/present.js';
 import type { Inbound, TaskMode } from './webview/protocol.js';
 import type { SetupViewModel } from './setup/present.js';
+
+import type { NotificationEvent } from './state/notifications.js';
+import type { CodeRelaySettingsModel } from './state/settings.js';
+import type { McpServerConfig } from '../tools/mcp.js';
+import type { ToolPolicyRule } from '../tools/policy.js';
+import type { ContinuityScoreResult } from '../continuity/metric.js';
+import type { ScenarioBenchmarkResult } from '../bench/recovery-bench.js';
+import type { ChaosExperimentReport } from '../bench/chaos.js';
 
 export const TASKS_VIEW_ID = 'coderelay.tasksView';
 export const CHANGES_VIEW_ID = 'coderelay.changesView';
@@ -62,6 +74,33 @@ export interface UiDeps {
   readonly soundEnabled?: () => boolean;
   readonly sessions?: () => readonly SessionSummary[];
   readonly contextWindowLimit?: () => number | null;
+  /** The newest verification run, owned by the extension host. */
+  readonly verification?: () => VerificationRun | null;
+  readonly verifying?: () => boolean;
+  /** The context set built for the active task, or null when none has been. */
+  readonly context?: () => ContextSet | null;
+  /** Why CodeRelay chose the running model, or null when the user pinned it. */
+  readonly selection?: () => Selection | null;
+  /**
+   * Observed endpoint health, for the Models view.
+   *
+   * Supplied by the extension host, which owns the one tracker shared by every
+   * task — health that reset between tasks would forget the thing it exists to
+   * remember. Optional, and when it is absent the view shows availability only
+   * rather than inventing a verdict.
+   */
+  readonly health?: () => readonly EndpointHealth[];
+  readonly notifications?: () => readonly NotificationEvent[];
+  readonly settings?: () => CodeRelaySettingsModel;
+  readonly workspaceInfo?: () => { name: string; path: string; hasFolders: boolean };
+  readonly activeNavTab?: () => string;
+  readonly mcpServers?: () => readonly McpServerConfig[];
+  readonly toolPolicies?: () => readonly ToolPolicyRule[];
+  readonly configuredProviders?: () => readonly ConfiguredProviderItem[];
+  readonly continuityScore?: () => ContinuityScoreResult | null;
+  readonly checkpointsList?: () => readonly { id: string; sequenceNumber: number; verified: boolean; reason: string; commitSha?: string; filesChanged: readonly string[] }[];
+  readonly benchmarkResults?: () => ScenarioBenchmarkResult | null;
+  readonly chaosReport?: () => ChaosExperimentReport | null;
 }
 
 export interface Ui extends Disposable {
@@ -75,6 +114,10 @@ export interface Ui extends Disposable {
   openChange(path: string): Promise<void>;
   /** A read-only checkpoint store for a task, or null when git cannot serve one. */
   checkpointsFor(taskId: TaskId): CheckpointStore | null;
+  /** Injects an attached context reference chip into the composer. */
+  attachContext(chip: string): void;
+  /** Asks user approval for command execution or high-risk actions. */
+  requestApproval(req: { requestId: string; command?: string; reason?: string; risk?: string }): void;
 }
 
 export function activateUi(context: ExtensionContext, deps: UiDeps): Ui {
@@ -90,6 +133,7 @@ export function activateUi(context: ExtensionContext, deps: UiDeps): Ui {
       const runtime = taskId === null ? null : store.runtime(taskId);
       return runtime?.model ?? deps.selectedModel();
     },
+    ...(deps.health === undefined ? {} : { health: deps.health }),
   });
 
   const taskView = new TaskViewProvider(context.extensionUri, {
@@ -102,6 +146,45 @@ export function activateUi(context: ExtensionContext, deps: UiDeps): Ui {
     soundEnabled: deps.soundEnabled,
     sessions: deps.sessions,
     contextWindowLimit: deps.contextWindowLimit,
+    verification: deps.verification,
+    verifying: deps.verifying,
+    context: deps.context,
+    selection: deps.selection,
+    notifications: deps.notifications,
+    settings: deps.settings,
+    workspaceInfo: deps.workspaceInfo,
+    activeNavTab: deps.activeNavTab,
+    mcpServers: deps.mcpServers,
+    toolPolicies: deps.toolPolicies,
+    candidates: () => {
+      const selected = deps.selectedModel();
+      return deps.candidates().map((c) => ({
+        model: { providerId: c.model.providerId, modelId: c.model.modelId, label: c.model.modelId },
+        capabilities: {
+          streaming: c.capabilities.streaming,
+          toolCalling: c.capabilities.toolCalling,
+          structuredOutputs: c.capabilities.structuredOutput,
+          nativeReasoning: c.capabilities.reasoning !== 'none',
+          contextWindow: c.capabilities.contextWindow,
+          maxOutput: c.capabilities.maxOutput,
+        },
+        isSelected: selected?.providerId === c.model.providerId && selected?.modelId === c.model.modelId,
+      }));
+    },
+    configuredProviders: () => (deps.configuredProviders ? deps.configuredProviders() : []),
+    health: () => {
+      if (!deps.health) return [];
+      return deps.health().map((h) => ({
+        providerId: `${h.key.model.providerId}/${h.key.model.modelId}`,
+        state: (h.breaker.kind === 'closed' ? 'healthy' : h.breaker.kind === 'half-open' ? 'degraded' : 'failing') as 'healthy' | 'degraded' | 'failing',
+        lastError: h.lastErrorClass ?? null,
+        latencyMs: h.latencyMs ?? null,
+      }));
+    },
+    continuityScore: deps.continuityScore,
+    checkpointsList: deps.checkpointsList,
+    benchmarkResults: deps.benchmarkResults,
+    chaosReport: deps.chaosReport,
   });
 
   const statusBar = new StatusBar(store);
@@ -232,6 +315,9 @@ export function activateUi(context: ExtensionContext, deps: UiDeps): Ui {
     render,
     openChange,
     checkpointsFor,
+    attachContext: (chip: string): void => taskView.attachContext(chip),
+    requestApproval: (req: { requestId: string; command?: string; reason?: string; risk?: string }): void =>
+      taskView.requestApproval(req),
     dispose(): void {
       checkpointStores.clear();
     },

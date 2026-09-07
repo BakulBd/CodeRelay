@@ -927,3 +927,63 @@ test('no decision reason or question carries credential material', () => {
     assert.ok(!/secret/i.test(text), text);
   }
 });
+
+// --- jitter ----------------------------------------------------------------
+// Added when hedging made concurrent retries possible. The property that
+// matters is not the exact delay but the bounds: a jittered wait must never be
+// so short that it re-throttles, nor longer than the budget the policy just
+// enforced.
+
+test('omitting the jitter source keeps the delay deterministic', () => {
+  const limits = DEFAULT_LIMITS;
+  assert.equal(backoffMs(1, limits), backoffMs(1, limits));
+  assert.equal(backoffMs(1, limits), limits.baseBackoffMs);
+  assert.equal(backoffMs(3, limits), limits.baseBackoffMs * 4);
+});
+
+test('equal jitter stays within half the computed delay and the full delay', () => {
+  const limits = DEFAULT_LIMITS;
+  const plain = backoffMs(3, limits);
+
+  assert.equal(backoffMs(3, limits, () => 0), plain / 2, 'the floor is half, never zero');
+  assert.equal(backoffMs(3, limits, () => 1), plain, 'the ceiling is the undithered delay');
+
+  for (const r of [0.01, 0.25, 0.5, 0.75, 0.99]) {
+    const jittered = backoffMs(3, limits, () => r);
+    assert.ok(
+      jittered >= plain / 2 && jittered <= plain,
+      `jittered delay ${jittered} must sit inside [${plain / 2}, ${plain}]`,
+    );
+  }
+});
+
+test('a jitter source outside [0,1] cannot exceed the wait budget', () => {
+  const limits = DEFAULT_LIMITS;
+  const plain = backoffMs(2, limits);
+  assert.equal(backoffMs(2, limits, () => 99), plain, 'clamped, not trusted');
+  assert.equal(backoffMs(2, limits, () => -5), plain / 2);
+  assert.equal(backoffMs(2, limits, () => Number.NaN), plain / 2, 'NaN must not leak into a delay');
+});
+
+test('jitter never pushes a delay past the cap', () => {
+  const limits: RouteLimits = { ...DEFAULT_LIMITS, baseBackoffMs: 1_000, maxWaitMs: 5_000 };
+  for (const r of [0, 0.5, 1]) {
+    assert.ok(backoffMs(10, limits, () => r) <= limits.maxWaitMs);
+  }
+});
+
+test('a provider-supplied retry-after is used exactly, never jittered', () => {
+  const decision = route(
+    input({
+      failure: failure({ retryAfterMs: 7_000, reason: 'rate limited' }),
+      random: () => 0,
+    }),
+  );
+
+  assert.ok(decision.kind === 'RETRY_SAME');
+  assert.equal(
+    decision.delayMs,
+    7_000,
+    'the provider told us how long to wait; second-guessing it gets us throttled again',
+  );
+});

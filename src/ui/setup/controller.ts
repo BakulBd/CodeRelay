@@ -12,7 +12,6 @@
  *   and model selector.
  */
 import type { WorkspaceConfiguration } from 'vscode';
-import { ConfigurationTarget } from 'vscode';
 import type { CredentialManager } from '../../credentials/store.js';
 import { createAdapter, type ModelConfig, type ProviderConfig } from '../../providers/catalog.js';
 import { discoverModels } from '../../providers/discovery.js';
@@ -20,6 +19,7 @@ import { buildProviderConfig } from '../../providers/presets.js';
 import { createFetch } from '../../providers/node-fetch.js';
 import type { SetupField } from '../webview/protocol.js';
 import { presentSetup, type SetupViewModel } from './present.js';
+import { presentKeyPool, type KeyPool } from './keys.js';
 import {
   addManualModel,
   back,
@@ -45,6 +45,13 @@ import {
   type ConfiguredProviderSummary,
   type SetupState,
 } from './wizard.js';
+import { auditLogger } from '../../security/audit.js';
+
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
 
 const CONFIG_SECTION = 'coderelay';
 
@@ -56,6 +63,7 @@ export interface SetupDeps {
   /** Called once the configuration has been written, so the trees refresh. */
   readonly onSaved: () => Promise<void>;
   readonly onSelectModel?: (model: { providerId: string; modelId: string }) => Promise<void>;
+  readonly hasWorkspace?: () => boolean;
 }
 
 export class SetupController {
@@ -103,13 +111,78 @@ export class SetupController {
   }
 
   model(): SetupViewModel {
-    return presentSetup(this.state);
+    return presentSetup(this.state, this.keyPool());
+  }
+
+  /**
+   * The credential pool for the endpoint currently in hand.
+   *
+   * Null when no endpoint is selected yet — there is no pool to show for a
+   * provider the user has not chosen. Read fresh on every render so a key that
+   * finished cooling appears without any refresh of its own.
+   */
+  private keyPool(): KeyPool | null {
+    const providerId = this.currentProviderId();
+    if (providerId === null) {
+      return null;
+    }
+    return presentKeyPool(providerId, this.deps.credentials.records(), this.now());
+  }
+
+  /** The endpoint being configured or managed, or null. */
+  private currentProviderId(): string | null {
+    const draft = this.draftProviderConfig();
+    if (draft !== null && draft.id !== '') {
+      return draft.id;
+    }
+    return this.state.editingOriginalId ?? null;
+  }
+
+  private now(): number {
+    return Date.now();
+  }
+
+  /**
+   * Turns a key on or off, then repaints.
+   *
+   * Goes straight to `CredentialManager`, which owns the rule that a rejected
+   * key cannot be toggled back on — the panel must not be able to overrule the
+   * provider.
+   */
+  async setKeyEnabled(credentialId: string, enabled: boolean): Promise<void> {
+    await this.deps.credentials.setEnabled(credentialId, enabled);
+    this.deps.onChange();
+  }
+
+  /** Moves a key to the front of its provider's order. */
+  async promoteKey(credentialId: string): Promise<void> {
+    const providerId = this.currentProviderId();
+    if (providerId === null) {
+      return;
+    }
+    const ordered = this.deps.credentials
+      .records()
+      .filter((r) => r.providerId === providerId)
+      .sort((a, b) => a.priority - b.priority || a.addedAt.localeCompare(b.addedAt))
+      .map((r) => r.credentialId);
+    await this.deps.credentials.reorder(providerId, [
+      credentialId,
+      ...ordered.filter((id) => id !== credentialId),
+    ]);
+    this.deps.onChange();
+  }
+
+  /** Removes a key and its secret. */
+  async removeKey(credentialId: string): Promise<void> {
+    await this.deps.credentials.remove(credentialId);
+    this.deps.onChange();
   }
 
   openManage(): void {
     const configured = this.loadConfiguredSummaries();
     this.secret = '';
     this.state = openManage(this.state, configured);
+    this.active = true;
     this.deps.onChange();
   }
 
@@ -117,6 +190,7 @@ export class SetupController {
     const configured = this.loadConfiguredSummaries();
     this.secret = '';
     this.state = startAddProvider(this.state, configured);
+    this.active = true;
     this.deps.onChange();
   }
 
@@ -150,8 +224,13 @@ export class SetupController {
       );
 
       const target = this.configTarget();
-      await settings.update('providers', providers, target);
-      await settings.update('models', models, target);
+      try {
+        await settings.update('providers', providers, target);
+        await settings.update('models', models, target);
+      } catch {
+        await settings.update('providers', providers, ConfigurationTarget.Global);
+        await settings.update('models', models, ConfigurationTarget.Global);
+      }
 
       // Remove credentials from SecretStorage
       const creds = this.deps.credentials.list(providerId);
@@ -174,6 +253,7 @@ export class SetupController {
   choose(presetKey: string): void {
     this.secret = '';
     this.state = chooseProvider(this.state, presetKey, this.existingProviderIds());
+    this.active = true;
     this.deps.onChange();
   }
 
@@ -251,6 +331,7 @@ export class SetupController {
    * Tests connection and discovers models.
    */
   private async testAndDiscover(options: { stayOnCurrentStep?: boolean } = {}): Promise<void> {
+    const currentStep = this.state.step;
     const problem = connectionProblem(this.state);
     if (problem !== null) {
       this.state = noteError(this.state, problem);
@@ -304,9 +385,8 @@ export class SetupController {
       this.state = noteDiscovery(this.state, { ok: false, reason: result.reason });
     }
 
-    if (options.stayOnCurrentStep && this.state.step === 'connect') {
-      // Keep on connect step if just testing connection
-      this.state = { ...this.state, step: 'connect' };
+    if (options.stayOnCurrentStep) {
+      this.state = { ...this.state, step: currentStep };
     }
 
     this.deps.onChange();
@@ -359,11 +439,25 @@ export class SetupController {
       }
 
       const target = this.configTarget();
-      await settings.update('providers', providers, target);
-      await settings.update('models', models, target);
+      try {
+        await settings.update('providers', providers, target);
+        await settings.update('models', models, target);
+      } catch {
+        await settings.update('providers', providers, ConfigurationTarget.Global);
+        await settings.update('models', models, ConfigurationTarget.Global);
+      }
 
       if (this.secret.trim() !== '') {
         await this.deps.credentials.add(config.id, `${config.id} key`, this.secret);
+        // Audited like every other credential change. The provider and label
+        // only — never any part of the secret, which is already in the keychain
+        // and must not be echoed anywhere else.
+        auditLogger.record({
+          category: 'SECURITY',
+          action: 'credential_added',
+          actor: 'user',
+          details: { providerId: config.id, via: 'guided setup' },
+        });
       }
       this.secret = '';
 
@@ -432,8 +526,8 @@ export class SetupController {
   }
 
   private configTarget(): ConfigurationTarget {
-    // If workspace is available use Workspace, else Global
-    return ConfigurationTarget.Workspace;
+    const hasWorkspace = this.deps.hasWorkspace ? this.deps.hasWorkspace() : true;
+    return hasWorkspace ? ConfigurationTarget.Workspace : ConfigurationTarget.Global;
   }
 }
 

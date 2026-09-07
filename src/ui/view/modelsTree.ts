@@ -26,8 +26,11 @@ import {
   type TreeDataProvider,
 } from 'vscode';
 import type { ModelRef } from '../../core/types.js';
+import type { EndpointHealth } from '../../policy/health.js';
 import type { Candidate } from '../../policy/route.js';
 import type { ProviderConfig } from '../../providers/catalog.js';
+import { healthIcon, summarizeHealth, type HealthSummary } from '../state/health.js';
+import { buildCapabilityMatrix, type CapabilityStatus } from '../../providers/detection.js';
 
 /** A provider grouping, or one model under it. */
 export type ModelNode =
@@ -41,6 +44,16 @@ export type ModelNode =
       readonly kind: 'model';
       readonly candidate: Candidate;
       readonly selected: boolean;
+      /**
+       * What has actually been observed of this model, already reduced to
+       * display form.
+       *
+       * Computed in `getChildren` rather than in the item builder so every row
+       * in one refresh is summarized against the same `now` — two rows
+       * disagreeing about the time is exactly the kind of small inconsistency
+       * that makes a health display untrustworthy.
+       */
+      readonly health: HealthSummary;
     };
 
 /** What a caller must supply. Read on demand so settings edits appear at once. */
@@ -50,6 +63,17 @@ export interface ModelsTreeDeps {
   readonly provider: (providerId: string) => ProviderConfig | null;
   /** The model the selected task is on, so the tree can mark it. */
   readonly current: () => ModelRef | null;
+  /**
+   * Everything observed about every endpoint, newest state each call.
+   *
+   * Optional: with no tracker the view degrades to exactly what it showed
+   * before health existed — availability only. That is the honest fallback,
+   * because "we have not measured anything" and "we cannot measure" should both
+   * result in the view saying nothing rather than guessing.
+   */
+  readonly health?: () => readonly EndpointHealth[];
+  /** Injected so a test can place an ejection window exactly. */
+  readonly now?: () => number;
 }
 
 export class ModelsTreeProvider implements TreeDataProvider<ModelNode> {
@@ -91,10 +115,15 @@ export class ModelsTreeProvider implements TreeDataProvider<ModelNode> {
 
     if (node.kind === 'provider') {
       const current = this.deps.current();
+      // One clock reading and one health snapshot for the whole group, so every
+      // row in this refresh is judged against the same instant.
+      const now = (this.deps.now ?? Date.now)();
+      const observed = this.deps.health?.() ?? [];
       return node.candidates.map((candidate) => ({
         kind: 'model' as const,
         candidate,
         selected: current !== null && sameRef(current, candidate.model),
+        health: summarizeHealth(endpointsFor(observed, candidate.model), now),
       }));
     }
 
@@ -160,6 +189,25 @@ function providerItem(node: Extract<ModelNode, { kind: 'provider' }>): TreeItem 
 }
 
 /**
+ * Every observed endpoint belonging to one model.
+ *
+ * Matched on the model reference rather than on the credential list, because a
+ * key that has since been deleted still carries evidence about how the endpoint
+ * behaved, and dropping it would quietly reset a provider's record every time a
+ * key was rotated.
+ */
+function endpointsFor(
+  observed: readonly EndpointHealth[],
+  model: ModelRef,
+): readonly EndpointHealth[] {
+  return observed.filter(
+    (entry) =>
+      entry.key.model.providerId === model.providerId &&
+      entry.key.model.modelId === model.modelId,
+  );
+}
+
+/**
  * One model row.
  *
  * The description answers "can this run now?" and the tooltip answers "what can
@@ -174,28 +222,66 @@ function modelItem(node: Extract<ModelNode, { kind: 'model' }>): TreeItem {
   item.id = `model:${candidate.model.providerId}/${candidate.model.modelId}`;
 
   const availability = describeAvailability(candidate);
-  item.description = selected ? `${availability.text} · in use` : availability.text;
+  const health = node.health;
 
-  // Icon says available/unavailable; the description says which and why. Never
-  // colour alone, and the accessible label repeats it for a screen reader.
+  // Two different questions, so two clauses: availability answers "is a key
+  // usable right now", health answers "has this been working lately". A model
+  // can have three ready keys and still be the worst thing to route to.
+  const clauses = [availability.text];
+  if (health.text !== null) {
+    clauses.push(health.text);
+  }
+  if (selected) {
+    clauses.push('in use');
+  }
+  item.description = clauses.join(' · ');
+
+  // The icon reflects health once there is evidence, and availability until
+  // then — an unused model is not given a verdict it has not earned. Never
+  // colour alone: the description carries the same information in words, and
+  // the accessible label repeats both.
+  const healthy = healthIcon(health.grade);
+  const icon =
+    health.grade === 'unknown'
+      ? { icon: availability.icon, colour: availability.colour }
+      : healthy;
   item.iconPath = selected
     ? new ThemeIcon('circle-filled', new ThemeColor('charts.blue'))
-    : new ThemeIcon(availability.icon, availability.colour === null ? undefined : new ThemeColor(availability.colour));
+    : new ThemeIcon(icon.icon, icon.colour === null ? undefined : new ThemeColor(icon.colour));
   item.accessibilityInformation = {
-    label: `${candidate.model.providerId} ${candidate.model.modelId}, ${availability.text}${
-      selected ? ', currently in use' : ''
-    }`,
+    label: `${candidate.model.providerId} ${candidate.model.modelId}, ${clauses.join(', ')}`,
   };
 
   const tooltip = new MarkdownString();
   tooltip.appendMarkdown(`**${escapeMarkdown(candidate.model.modelId)}**\n\n`);
   tooltip.appendMarkdown(`${escapeMarkdown(availability.detail)}\n\n`);
+  if (health.detail !== null) {
+    tooltip.appendMarkdown(`${escapeMarkdown(health.detail)}\n\n`);
+  }
+  // Built through `buildCapabilityMatrix` so the tooltip can distinguish a
+  // capability the user declared *false* from one they never declared at all.
+  // The catalog defaults an absent flag to `false`, which reads identically to
+  // "this model cannot do it" — and those are different claims.
+  const matrix = buildCapabilityMatrix(candidate.model.providerId, candidate.model.modelId, caps);
+  const cell = (status: CapabilityStatus): string => {
+    switch (status) {
+      case 'supported':
+        return 'yes';
+      case 'unsupported':
+        return 'no';
+      case 'partial':
+        return 'partial';
+      case 'unknown':
+        return 'not declared';
+    }
+  };
+
   tooltip.appendMarkdown('| Declared capability | Value |\n| --- | --- |\n');
   tooltip.appendMarkdown(`| Context window | ${caps.contextWindow.toLocaleString('en-US')} |\n`);
   tooltip.appendMarkdown(`| Max output | ${caps.maxOutput.toLocaleString('en-US')} |\n`);
-  tooltip.appendMarkdown(`| Tool calling | ${caps.toolCalling ? 'yes' : 'no'} |\n`);
-  tooltip.appendMarkdown(`| Parallel tool calls | ${caps.parallelToolCalls ? 'yes' : 'no'} |\n`);
-  tooltip.appendMarkdown(`| Vision | ${caps.vision ? 'yes' : 'no'} |\n`);
+  tooltip.appendMarkdown(`| Tool calling | ${cell(matrix.toolCalling)} |\n`);
+  tooltip.appendMarkdown(`| Parallel tool calls | ${cell(matrix.parallelToolCalls)} |\n`);
+  tooltip.appendMarkdown(`| Vision | ${cell(matrix.vision)} |\n`);
   tooltip.appendMarkdown(`| Reasoning | ${caps.reasoning} |\n`);
   if (caps.costPerMTokIn > 0 || caps.costPerMTokOut > 0) {
     tooltip.appendMarkdown(

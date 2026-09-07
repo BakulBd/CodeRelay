@@ -19,6 +19,21 @@ export interface DiagnosticsData {
     readonly taskName: string;
     readonly errors: readonly { readonly errorClass: string; readonly message: string }[];
   }[];
+  /**
+   * Proxy settings CodeRelay can see, or null when it was not asked.
+   *
+   * Reported because "every request fails behind our proxy" is the commonest
+   * enterprise failure and the least self-explanatory. Stated carefully: this
+   * is what CodeRelay *detected*, not what it routes through — Node's `fetch`
+   * does not honour `HTTPS_PROXY` on its own, and claiming otherwise would send
+   * someone hunting the wrong bug.
+   */
+  readonly proxy?: {
+    readonly proxyUrl: string | null;
+    readonly strictSsl: boolean;
+    readonly noProxy: readonly string[];
+    readonly customCaPath: string | null;
+  } | null;
 }
 
 /**
@@ -31,6 +46,18 @@ export function formatDiagnosticsReport(data: DiagnosticsData): string {
   report += `- **CodeRelay Version:** ${data.extVersion}\n`;
   report += `- **VS Code Version:** ${data.codeVersion}\n`;
   report += `- **Storage Path:** ${data.storagePath ?? 'Not available (No workspace opened)'}\n\n`;
+
+  if (data.proxy !== undefined && data.proxy !== null) {
+    report += `## Network\n`;
+    // Stated as detection, not as behaviour: Node's `fetch` does not route
+    // through HTTPS_PROXY on its own, and implying it does would send someone
+    // hunting the wrong bug when requests fail behind a corporate proxy.
+    report += `CodeRelay reads these but does **not** tunnel through a proxy itself.\n`;
+    report += `- **Proxy detected:** ${data.proxy.proxyUrl ?? 'none'}\n`;
+    report += `- **Strict TLS:** ${data.proxy.strictSsl ? 'on' : 'off'}\n`;
+    report += `- **Bypass rules:** ${data.proxy.noProxy.join(', ') || 'none'}\n`;
+    report += `- **Extra CA bundle:** ${data.proxy.customCaPath ?? 'none'}\n\n`;
+  }
 
   report += `## Configuration\n`;
   report += `- **Configured Providers:** ${data.providers.length}\n`;
@@ -71,6 +98,8 @@ export interface CollectDiagnosticsOptions {
   readonly storagePath: string | null;
   readonly providers: readonly { id: string; type?: string; enabled?: boolean }[];
   readonly models: readonly { modelId: string; providerId: string; enabled?: boolean }[];
+  /** Detected proxy settings, passed through to the report. */
+  readonly proxy?: DiagnosticsData['proxy'];
 }
 
 /**
@@ -110,5 +139,6 @@ export async function buildDiagnosticsReport(opts: CollectDiagnosticsOptions): P
     providers: opts.providers,
     models: opts.models,
     recentErrors,
+    ...(opts.proxy === undefined ? {} : { proxy: opts.proxy }),
   });
 }

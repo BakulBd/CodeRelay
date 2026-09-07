@@ -14,7 +14,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { AgentLoop, type AgentLoopDeps, type LoopEvent, type LoopResult } from '../agent/loop.js';
+import { AgentLoop, type AgentLoopDeps, type HealthRecorder, type LoopEvent, type LoopResult } from '../agent/loop.js';
 import { CheckpointStore, execGitRunner, type GitRunner } from '../checkpoint/git.js';
 import type { LedgerEntry } from '../continuity/entries.js';
 import { ExecutionLedger } from '../continuity/ledger.js';
@@ -75,6 +75,15 @@ export function buildCandidates(
   catalog: ModelCatalog,
   credentials: CredentialManager,
   now: number,
+  /**
+   * Milliseconds a whole provider is backed off for, or 0 when it is not.
+   *
+   * Provider-level, and therefore distinct from the per-credential cooling
+   * below: an organisation-wide 429 blocks every key at once, and rotating
+   * through them would just spend the remaining quota confirming that. Omitted
+   * by callers that have no limiter, which is the pre-existing behaviour.
+   */
+  providerCooldownMs?: (providerId: string) => number,
 ): readonly Candidate[] {
   const records = credentials.records();
 
@@ -86,17 +95,34 @@ export function buildCandidates(
     }
 
     const forProvider = records.filter((r) => r.providerId === entry.provider);
-    const ready = forProvider.filter(
-      (r) => r.disabledReason === null && (r.coolingUntil === null || r.coolingUntil <= now),
-    );
+
+    // A whole provider backing off makes every one of its keys unusable, so no
+    // key is "ready" while it lasts.
+    const providerWait = providerCooldownMs?.(entry.provider) ?? 0;
+
+    const ready =
+      providerWait > 0
+        ? []
+        : forProvider.filter(
+            (r) =>
+              r.disabledReason === null &&
+              // A key the user switched off is not ready. `CredentialManager.next`
+              // already refuses it; omitting the same check here made the router
+              // count it as available and pick a model that could not run.
+              !r.userDisabled &&
+              (r.coolingUntil === null || r.coolingUntil <= now),
+          );
 
     // Only meaningful when nothing is ready: it answers "how long until this
     // model becomes usable again", and a model that is usable now has no wait.
     let coolingRetryAfterMs: number | null = null;
     if (ready.length === 0) {
       const waits = forProvider
-        .filter((r) => r.disabledReason === null && r.coolingUntil !== null)
+        .filter((r) => r.disabledReason === null && !r.userDisabled && r.coolingUntil !== null)
         .map((r) => Math.max(0, (r.coolingUntil as number) - now));
+      if (providerWait > 0) {
+        waits.push(providerWait);
+      }
       coolingRetryAfterMs = waits.length === 0 ? null : Math.min(...waits);
     }
 
@@ -172,6 +198,30 @@ export interface SessionOptions {
     readonly timeoutMs?: number;
   };
   readonly now?: () => number;
+  /**
+   * Shared endpoint-health memory.
+   *
+   * Passed in rather than created here because health is only useful when it
+   * *outlives* one task: a provider that failed for the last ten minutes must
+   * still be known to be failing when the next task starts. A tracker built per
+   * session would forget exactly the thing it exists to remember.
+   */
+  readonly health?: HealthRecorder | null;
+  /**
+   * Provider-level backoff, in milliseconds, or 0.
+   *
+   * Consulted every time the loop recomputes candidates, so a provider that
+   * returned a 429 stops being offered for the length of its own backoff
+   * rather than being retried through each of its keys in turn.
+   */
+  readonly providerCooldownMs?: (providerId: string) => number;
+  /**
+   * Source of jitter for retry backoff. Omit for deterministic delays.
+   *
+   * Threaded through rather than defaulted inside the loop so a test can run
+   * the whole session composition and still assert exact delays.
+   */
+  readonly random?: () => number;
 }
 
 export interface Session {
@@ -270,7 +320,13 @@ export async function openSession(options: SessionOptions): Promise<Session> {
     buildRequest,
     // Re-evaluated per routing decision, so a key that finished cooling during a
     // backoff becomes usable without restarting the task.
-    candidates: async () => buildCandidates(options.catalog, options.credentials, now()),
+    candidates: async () =>
+      buildCandidates(
+        options.catalog,
+        options.credentials,
+        now(),
+        options.providerCooldownMs,
+      ),
     requirements: options.requirements ?? DEFAULT_REQUIREMENTS,
     initialModel: options.initialModel,
     checkpoints,
@@ -282,6 +338,11 @@ export async function openSession(options: SessionOptions): Promise<Session> {
     ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     ...(options.observer === undefined ? {} : { observer: options.observer }),
+    ...(options.health === undefined || options.health === null
+      ? {}
+      : { health: options.health }),
+    ...(options.random === undefined ? {} : { random: options.random }),
+    now,
   };
 
   const loop = new AgentLoop(deps);

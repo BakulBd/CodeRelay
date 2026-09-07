@@ -46,6 +46,15 @@ export interface Runtime {
   /** What the agent is doing, in a few words. Shown while nothing else has landed. */
   activity: string | null;
   startedAtMs: number;
+  /**
+   * Checkpoints observed being created during *this* run.
+   *
+   * Live-only by nature, like token usage: checkpoints are git refs rather than
+   * ledger entries, so a task reopened after a reload has no runtime that
+   * watched them being made. The projection then reports `null` rather than
+   * `0`, because "nobody was watching" is not "none were taken".
+   */
+  checkpointsSeen: number;
 }
 
 /**
@@ -237,6 +246,22 @@ export class TaskStore implements Disposable {
     this.scheduleChange();
   }
 
+  /**
+   * Counts a checkpoint that was actually created.
+   *
+   * Only `created` outcomes reach here. A checkpoint skipped because nothing
+   * had changed is not a snapshot, and counting it would inflate the one number
+   * the recovery panel uses to claim work was preserved.
+   */
+  noteCheckpoint(taskId: TaskId): void {
+    const runtime = this.runtimes.get(taskId);
+    if (runtime === undefined) {
+      return;
+    }
+    runtime.checkpointsSeen += 1;
+    this.scheduleChange();
+  }
+
   noteActivity(taskId: TaskId, activity: string | null): void {
     const runtime = this.runtimes.get(taskId);
     if (runtime === undefined) {
@@ -294,6 +319,9 @@ export class TaskStore implements Disposable {
       inputTokens: runtime?.inputTokens ?? null,
       outputTokens: runtime?.outputTokens ?? null,
       costUsd: cost,
+      // Live-only, so a reopened task reports null rather than a count nobody
+      // was present to take.
+      checkpointCount: runtime === undefined ? null : runtime.checkpointsSeen,
     });
   }
 

@@ -233,6 +233,89 @@
         "title": "Select Model",
         "category": "CodeRelay",
         "icon": "$(check)"
+      },
+      {
+        "command": "coderelay.verify",
+        "title": "Verify Workspace",
+        "category": "CodeRelay",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "coderelay.stopVerify",
+        "title": "Stop Verification",
+        "category": "CodeRelay"
+      },
+      {
+        "command": "coderelay.rebuildContext",
+        "title": "Rebuild Context",
+        "category": "CodeRelay",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "coderelay.openMemory",
+        "title": "Open Project Memory",
+        "category": "CodeRelay",
+        "icon": "$(book)"
+      },
+      {
+        "command": "coderelay.setPermissionMode",
+        "title": "Set Command Permissions",
+        "category": "CodeRelay",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "coderelay.testProviders",
+        "title": "Test All Providers",
+        "category": "CodeRelay",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "coderelay.exportDiagnostics",
+        "title": "Export Diagnostics",
+        "category": "CodeRelay",
+        "icon": "$(export)"
+      },
+      {
+        "command": "coderelay.routingRules",
+        "title": "Routing Rules",
+        "category": "CodeRelay",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "coderelay.manageKeys",
+        "title": "Manage API Keys",
+        "category": "CodeRelay",
+        "icon": "$(key)"
+      },
+      {
+        "command": "coderelay.relay",
+        "title": "Relay Task to Another Model",
+        "category": "CodeRelay",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "coderelay.benchmark",
+        "title": "Benchmark Lab",
+        "category": "CodeRelay",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "coderelay.showAuditLog",
+        "title": "Show Audit Log",
+        "category": "CodeRelay",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "coderelay.exportTask",
+        "title": "Export Task",
+        "category": "CodeRelay",
+        "icon": "$(export)"
+      },
+      {
+        "command": "coderelay.testCredential",
+        "title": "Test API Key",
+        "category": "CodeRelay",
+        "icon": "$(plug)"
       }
     ],
     "menus": {
@@ -602,6 +685,55 @@
           "default": 120000,
           "minimum": 1000,
           "markdownDescription": "How long a single command may run before it is killed, in milliseconds."
+        },
+        "coderelay.routingRules": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Routing rules, in order. The first rule whose condition matches decides which model is preferred for a task. A rule is a **preference, not a requirement**: if the model it names has no key, is missing, or is failing, the rule is skipped and CodeRelay's automatic choice is used instead. Edit these from **CodeRelay: Routing Rules** rather than by hand.",
+          "items": {
+            "type": "object",
+            "required": [
+              "prefer"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string",
+                "description": "Shown in the rules list and in \"Why this model?\"."
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              },
+              "when": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "plan",
+                      "code",
+                      "debug",
+                      "review",
+                      "test",
+                      "fallback"
+                    ]
+                  },
+                  "minContextTokens": {
+                    "type": "number"
+                  }
+                }
+              },
+              "prefer": {
+                "description": "A model id, or {\"providerId\": \"...\"} for any model from a provider."
+              },
+              "fallback": {
+                "description": "Tried when the preferred target cannot run."
+              }
+            }
+          }
         }
       }
     }
@@ -611,7 +743,7 @@
     "compile": "tsc -p ./tsconfig.build.json",
     "watch": "tsc -p . --watch",
     "typecheck": "tsc -p . --noEmit",
-    "test": "tsc -p . && node --test \"out/test/**/*.test.js\"",
+    "test": "npm run clean && tsc -p . && node --test \"out/test/**/*.test.js\"",
     "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
     "package": "npm run clean && npm run typecheck && npm run test && npm run clean && npm run compile && vsce package --no-dependencies",
     "vscode:prepublish": "npm run clean && npm run compile"

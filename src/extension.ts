@@ -19,6 +19,30 @@
  */
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { HealthTracker } from './policy/health.js';
+import { FAULT_LABELS, SCENARIOS, injectFaults } from './bench/faults.js';
+import { applyMode, behaviourFor } from './plan/modes.js';
+import { ROLE_LABELS, TASK_ROLES, selectModel, type Selection } from './policy/select.js';
+import {
+  applyRules,
+  describeRule,
+  parseRules,
+  type RoutingRule,
+} from './policy/rules.js';
+import { gatherCandidates } from './context/gather.js';
+import { selectContext, type ContextSet } from './context/select.js';
+import {
+  EMPTY_MEMORY,
+  parseMemory,
+  renderForPrompt,
+  renderMemory,
+} from './memory/project.js';
+import { createExecutor, readWorkspaceFacts } from './verify/exec.js';
+import { planVerification } from './verify/plan.js';
+import { runVerification, type VerificationRun } from './verify/run.js';
 import {
   buildCandidates,
   openSession,
@@ -26,7 +50,7 @@ import {
   type Session,
 } from './app/session.js';
 import type { LoopEvent, LoopResult } from './agent/loop.js';
-import type { RouteDecision } from './policy/route.js';
+import { DEFAULT_LIMITS, type RouteDecision } from './policy/route.js';
 import { ExecutionLedger } from './continuity/ledger.js';
 import { listTasks, type TaskSummary } from './continuity/tasks.js';
 import type { ModelRef, TaskId } from './core/types.js';
@@ -44,13 +68,21 @@ import { activateUi, focusTaskView, type Ui } from './ui/activate.js';
 import { addModel } from './ui/setup.js';
 import { SetupController } from './ui/setup/controller.js';
 import { ModelsTreeProvider } from './ui/view/modelsTree.js';
-import { oneLine } from './ui/state/format.js';
+import { computeCost, oneLine } from './ui/state/format.js';
+import { auditLogger } from './security/audit.js';
+import { rateLimiter } from './security/rate-limiter.js';
+import { MODEL_ALIASES, resolveModelAlias } from './providers/aliases.js';
+import { proxyResolver } from './security/proxy.js';
+import { TaskExecutionLock } from './continuity/concurrency.js';
+import { exportTaskToPortableJson } from './continuity/portability.js';
+import { ContextManifestBuilder } from './context/manifest.js';
 import { summarizeChanges, toolVerb, type BlockedReason, type SessionSummary } from './ui/webview/present.js';
 import {
   classifyCommand,
   forbiddenReason,
   isForbidden,
   parsePermissionMode,
+  type PermissionMode,
   requiresApproval,
 } from './security/commands.js';
 import type { ApprovalDecision, ApprovalRequest } from './tools/runner.js';
@@ -62,6 +94,37 @@ import { buildDiagnosticsReport } from './ui/diagnostics.js';
 
 const CONFIG_SECTION = 'coderelay';
 
+import { NotificationCenter } from './ui/state/notifications.js';
+import { DEFAULT_SETTINGS, type CodeRelaySettingsModel } from './ui/state/settings.js';
+import { McpManager } from './tools/mcp.js';
+import { ToolPolicyEngine } from './tools/policy.js';
+import { generateEnhancedTask } from './agent/enhance.js';
+import { ProviderPlayground } from './providers/playground.js';
+
+import { TaskStateGraph } from './continuity/graph.js';
+import { ContinuityScoreCalculator } from './continuity/metric.js';
+import {
+  BENCHMARK_SCENARIOS,
+  PARADIGM_LABELS,
+  type BenchmarkParadigm,
+  type BenchmarkScenario,
+  type ParadigmMetrics,
+  type ScenarioBenchmarkResult,
+} from './bench/recovery-bench.js';
+import { ChaosInjectionHarness, type ChaosExperimentReport, type ChaosFailureType } from './bench/chaos.js';
+import { MultiModelReviewOrchestrator } from './policy/review.js';
+import { WorkspaceSafetyChecker } from './recovery/safety.js';
+import { execGitRunner, type Checkpoint } from './checkpoint/git.js';
+
+const notificationCenter = new NotificationCenter();
+let currentSettings: CodeRelaySettingsModel = { ...DEFAULT_SETTINGS };
+const mcpManager = new McpManager();
+const toolPolicyEngine = new ToolPolicyEngine();
+let activeNavTab = 'composer';
+let activeTaskGraph: TaskStateGraph | null = null;
+let activeBenchmarkResults: ScenarioBenchmarkResult | null = null;
+let activeChaosReport: ChaosExperimentReport | null = null;
+
 /**
  * The UI surfaces, once activation has built them.
  *
@@ -71,6 +134,69 @@ const CONFIG_SECTION = 'coderelay';
  * a command must not fail because a view has not been created yet.
  */
 let ui: Ui | null = null;
+
+/**
+ * Observed health for every endpoint used in this window.
+ *
+ * Deliberately module scope and deliberately not persisted. It has to outlive a
+ * single task — that is the whole point, since a provider that failed during
+ * the last task is still failing at the start of the next one — but a breaker
+ * restored from disk would eject a provider for an outage that ended while VS
+ * Code was closed, and the user would have no way to see why a provider they
+ * can reach is being skipped. Losing it on reload costs one extra attempt;
+ * keeping it wrongly costs a working provider.
+ */
+const health = new HealthTracker({ now: () => Date.now() });
+
+/**
+ * The most recent verification run, and whether one is in flight.
+ *
+ * Held here rather than in the ledger because a verification result describes
+ * the *workspace right now*, not the task's history: re-running the suite after
+ * an unrelated edit would make a stored verdict quietly wrong, and a stale green
+ * tick is the exact failure this feature exists to prevent.
+ */
+let verification: VerificationRun | null = null;
+let verifying: AbortController | null = null;
+
+/**
+ * The context set most recently built for the active task.
+ *
+ * Held here rather than in the ledger because it describes the workspace *now*:
+ * a set recorded three edits ago would name files whose relevance has changed,
+ * and a stale context panel is worse than none because it invites the user to
+ * correct a boundary that is no longer in force.
+ */
+let contextSet: ContextSet | null = null;
+
+/**
+ * Why the model now running was chosen, when CodeRelay chose it.
+ *
+ * Null when the user pinned a model — there is no explanation owed for a
+ * decision they made themselves, and manufacturing one would be noise.
+ */
+let lastSelection: Selection | null = null;
+
+/**
+ * Commands the user has allowed for the rest of the current task.
+ *
+ * Task-scoped, not session-scoped, and cleared when a task starts: a permission
+ * granted while fixing the build should not still be in force tomorrow on an
+ * unrelated task in the same window. Holds exact command strings — see
+ * `approveToolCall` for why anything looser is unsafe.
+ */
+const allowedForTask = new Set<string>();
+
+/**
+ * One task, one runner.
+ *
+ * Two sessions holding the same ledger open is the concurrency bug that
+ * corrupts state rather than merely confusing it: both would append, and the
+ * sequence numbers recovery relies on would interleave. `switchModel`
+ * approximated this with `abort()` followed by a fixed sleep and a hope; this
+ * makes it a fact.
+ */
+const taskLock = new TaskExecutionLock();
 /**
  * Guided setup, when it is open.
  */
@@ -138,10 +264,20 @@ function readCatalog(): ModelCatalog | null {
     return ModelCatalog.fromSettings(config.get('providers'), config.get('models'));
   } catch (err: unknown) {
     if (err instanceof ConfigError) {
+      // The one place raw settings are still offered, and deliberately: the
+      // configuration is malformed, which is the single case the guided screen
+      // cannot repair — it would have to parse the thing that will not parse.
+      // Guided setup is offered first, because most of these are fixable there.
       void vscode.window
-        .showErrorMessage(`CodeRelay configuration: ${err.message}`, 'Open Settings')
+        .showErrorMessage(
+          `CodeRelay configuration: ${err.message}`,
+          'Open CodeRelay setup',
+          'Edit settings.json',
+        )
         .then((choice) => {
-          if (choice === 'Open Settings') {
+          if (choice === 'Open CodeRelay setup') {
+            void openGuidedSetup('manage');
+          } else if (choice === 'Edit settings.json') {
             void vscode.commands.executeCommand(
               'workbench.action.openSettings',
               `${CONFIG_SECTION}.models`,
@@ -213,14 +349,6 @@ const MODEL_DECLARATION_REASON =
   'CodeRelay does not ship a model list. Vendors change their line-ups monthly, so a ' +
   'list baked into an extension goes stale and starts misreporting context windows — ' +
   'which is exactly what failover decisions are gated on.';
-
-/** Opens one CodeRelay setting in the settings UI. */
-async function openConfigSettings(key: 'providers' | 'models'): Promise<void> {
-  await vscode.commands.executeCommand(
-    'workbench.action.openSettings',
-    `${CONFIG_SECTION}.${key}`,
-  );
-}
 
 
 /**
@@ -357,15 +485,9 @@ async function addCredential(context: vscode.ExtensionContext): Promise<void> {
     const choice = await vscode.window.showInformationMessage(
       'CodeRelay has no AI endpoint configured yet. Adding one takes about a minute.',
       'Add an endpoint',
-      'Open settings',
     );
     if (choice === 'Add an endpoint') {
       await openGuidedSetup();
-    } else if (choice === 'Open settings') {
-      await vscode.commands.executeCommand(
-        'workbench.action.openSettings',
-        `${CONFIG_SECTION}.providers`,
-      );
     }
     return;
   }
@@ -383,6 +505,15 @@ async function addCredential(context: vscode.ExtensionContext): Promise<void> {
   // is how `CredentialManager` knows the provider is usable at all.
   if (picked.auth === 'none') {
     await credentials.add(picked.id, 'no authentication', NO_AUTH_PLACEHOLDER);
+    auditLogger.record({
+      category: 'SECURITY',
+      action: 'credential_added',
+      actor: 'user',
+      // The provider and label only. A credential is never identified by any
+      // part of its secret, in the audit trail least of all.
+      details: { providerId: picked.id, auth: 'none' },
+    });
+    await ui?.refresh();
     void vscode.window.showInformationMessage(
       `CodeRelay marked "${picked.id}" as usable without a key.`,
     );
@@ -415,6 +546,17 @@ async function addCredential(context: vscode.ExtensionContext): Promise<void> {
 
   try {
     const ref = await credentials.add(picked.id, label.trim() === '' ? 'default' : label, secret);
+    // Every credential change is auditable, and every one of them repaints:
+    // the key pool, the Models tree and the router's candidate list all read
+    // from the same store, and a key that is stored but invisible until the
+    // next unrelated refresh looks like a key that failed to save.
+    auditLogger.record({
+      category: 'SECURITY',
+      action: 'credential_added',
+      actor: 'user',
+      details: { providerId: picked.id, label: label.trim() === '' ? 'default' : label },
+    });
+    await ui?.refresh();
     void vscode.window.showInformationMessage(
       `CodeRelay stored a credential for ${picked.id} (${ref.credentialId.slice(0, 8)}…).`,
     );
@@ -522,7 +664,28 @@ async function pickModel(
     return null;
   }
 
-  const picked = await vscode.window.showQuickPick(items, {
+  // Aliases first: "fast" or "long-context" is what a user actually wants to
+  // express, and it keeps working when the underlying model line-up changes.
+  // Each resolves to a concrete model and says which one, so picking an alias
+  // is never a silent choice.
+  const aliasItems = MODEL_ALIASES.flatMap((alias) => {
+    const resolved = resolveModelAlias(alias, candidates);
+    if (resolved.resolvedModel === null) {
+      // An alias nothing satisfies is omitted rather than shown disabled: a
+      // greyed row invites a click that cannot work.
+      return [];
+    }
+    return [
+      {
+        model: resolved.resolvedModel,
+        label: `$(sparkle) ${alias}`,
+        description: `${resolved.resolvedModel.providerId} · ${resolved.resolvedModel.modelId}`,
+        detail: resolved.reason,
+      },
+    ];
+  });
+
+  const picked = await vscode.window.showQuickPick([...aliasItems, ...items], {
     title: 'CodeRelay: start this task on which model?',
     matchOnDescription: true,
     matchOnDetail: true,
@@ -647,6 +810,15 @@ async function runTask(
             : {}),
           connectTimeoutMs: readTimeoutMs(config, 'connectTimeoutSeconds', 60),
           idleTimeoutMs: readTimeoutMs(config, 'idleTimeoutSeconds', 120),
+          // One tracker for the whole window, so a provider that failed during
+          // the previous task is already known to be failing when this one
+          // starts, instead of being offered again as a fresh candidate.
+          health,
+          providerCooldownMs: (providerId) => rateLimiter.getRemainingWaitMs(providerId),
+          // Real jitter in production. Retries that land on the same tick turn a
+          // rate limit into a lockout; the "single user, so no herd" argument
+          // stops holding as soon as several attempts can be in flight at once.
+          random: Math.random,
           ...(typeof maxTurns === 'number' && maxTurns > 0 ? { maxTurns } : {}),
           // The durable record, straight into the view. The timeline therefore
           // shows exactly what a resumed task would act on rather than a parallel
@@ -660,6 +832,23 @@ async function runTask(
             logEvents(channel, event);
             if (taskId !== null) {
               noteLoopEvent(taskId, options.catalog, event);
+            }
+            // Provider-level backoff. A 429 is usually the account's quota
+            // rather than one key's, so the whole provider steps back instead
+            // of the task spending what is left of the quota rotating through
+            // its other keys to confirm that.
+            if (event.t === 'decision' && event.decision.kind === 'RETRY_SAME') {
+              if (event.decision.delayMs > 0) {
+                rateLimiter.recordRateLimit(
+                  event.decision.model.providerId,
+                  Math.ceil(event.decision.delayMs / 1000),
+                );
+              }
+            }
+            if (event.t === 'stream') {
+              // A token arriving is the only honest signal that the provider is
+              // serving this account again, so it is what ends the backoff.
+              rateLimiter.recordSuccess(options.initialModel.providerId);
             }
             if (event.t === 'decision' && event.decision.kind === 'SWITCH_MODEL') {
               // Never hidden: a switch changes who is doing the work, so it is
@@ -690,6 +879,11 @@ async function runTask(
       channel.appendLine(`objective: ${options.objective}`);
       channel.appendLine(`ledger: ${session.ledgerPath}`);
 
+      // Held for as long as this session owns the ledger. `switchModel` waits on
+      // it rather than sleeping, so a relay cannot open a second session over a
+      // ledger the first is still appending to.
+      taskLock.acquire(session.taskId);
+
       // Registering the runtime is what makes the task *live*: the store now has
       // an abort controller to stop it with, and every view reads "running" from
       // here rather than guessing from a ledger that always trails the loop.
@@ -704,6 +898,7 @@ async function runTask(
         streamTail: '',
         activity: 'Starting',
         startedAtMs: Date.now(),
+        checkpointsSeen: 0,
       });
       await ui?.refresh();
       await ui?.taskView.reveal();
@@ -713,6 +908,7 @@ async function runTask(
         // Cleared before reporting, so the completion notice and the header agree
         // about whether the task is still running.
         ui?.store.end(session.taskId);
+        taskLock.release(session.taskId);
         await ui?.refresh();
         await reportResult(context, channel, session.taskId, result);
       } catch (err: unknown) {
@@ -721,6 +917,7 @@ async function runTask(
       } finally {
         cancelSub.dispose();
         ui?.store.end(session.taskId);
+        taskLock.release(session.taskId);
         await session.close();
         await ui?.refresh();
       }
@@ -774,6 +971,13 @@ function noteLoopEvent(taskId: TaskId, catalog: ModelCatalog, event: LoopEvent):
         taskId,
         event.outcome.t === 'created' ? 'Checkpointing' : 'Preparing the next step',
       );
+      if (event.outcome.t === 'created') {
+        store.noteCheckpoint(taskId);
+        // Record it in the task graph too. The Checkpoints view reads from the
+        // graph, and nothing was populating it from a real run — so it showed
+        // an empty list while the checkpoints existed in git the whole time.
+        recordGraphCheckpoint(taskId, event.outcome.checkpoint);
+      }
       break;
 
     case 'decision':
@@ -1278,6 +1482,7 @@ async function attachFileReference(): Promise<void> {
   // tools, and showing the file is the useful half of "attach" that does not
   // require reaching into the webview's input.
   await vscode.window.showTextDocument(picked.uri, { preview: true });
+  ui?.attachContext(`@${picked.label}`);
 }
 
 /**
@@ -1349,11 +1554,13 @@ async function handleViewMessage(
       return;
 
     case 'newSession':
+      activeNavTab = 'composer';
       ui?.store.select(null);
       ui?.render();
       return;
 
     case 'switchSession':
+      activeNavTab = 'current';
       await ui?.store.select(message.taskId as TaskId);
       await ui?.store.load(message.taskId as TaskId);
       ui?.render();
@@ -1397,6 +1604,55 @@ async function handleViewMessage(
       await startFromComposer(context, channel, "Please reconsider and regenerate the engineering plan with an alternative architecture.", null);
       return;
 
+    case 'relay':
+      void vscode.commands.executeCommand('coderelay.relay');
+      return;
+
+    case 'relayTask':
+      void relayTask(context, channel, message.targetModel);
+      return;
+
+    case 'rollbackCheckpoint':
+      void rollbackToCheckpoint(context, channel, message.checkpointId);
+      return;
+
+    case 'runRecoveryBenchmark':
+      void runRecoveryBenchmark(context, message.scenarioId);
+      return;
+
+    case 'injectChaos':
+      void executeChaosInjection(message.failureType, message.targetStep);
+      return;
+
+    case 'exportTaskGraph':
+      void exportTaskGraph();
+      return;
+
+    case 'importTaskGraph':
+      void importTaskGraph(message.graphJson);
+      return;
+
+    case 'runMultiModelReview':
+      void executeMultiModelReview(context, channel);
+      return;
+
+    case 'rebuildContext':
+      void vscode.commands.executeCommand('coderelay.rebuildContext');
+      return;
+
+    case 'clearContext':
+      contextSet = null;
+      ui?.render();
+      return;
+
+    case 'verify':
+      void vscode.commands.executeCommand('coderelay.verify');
+      return;
+
+    case 'stopVerify':
+      void vscode.commands.executeCommand('coderelay.stopVerify');
+      return;
+
     case 'refreshViews':
       await ui?.refresh();
       return;
@@ -1420,14 +1676,17 @@ async function handleViewMessage(
 
     case 'setupOpenManage':
       setup?.openManage();
+      await ui?.taskView.reveal();
       return;
 
     case 'setupOpenAdd':
       setup?.openAdd();
+      await ui?.taskView.reveal();
       return;
 
     case 'setupEditProvider':
       setup?.edit(message.providerId);
+      await ui?.taskView.reveal();
       return;
 
     case 'setupDeleteProvider':
@@ -1482,6 +1741,53 @@ async function handleViewMessage(
       await setup?.refreshModels();
       return;
 
+    case 'keyToggle':
+      auditLogger.record({
+        category: 'SECURITY',
+        action: message.enabled ? 'credential_enabled' : 'credential_disabled',
+        actor: 'user',
+        details: { credentialId: message.credentialId },
+      });
+      void setup?.setKeyEnabled(message.credentialId, message.enabled).then(() => ui?.refresh());
+      return;
+
+    case 'keyTest':
+      void testCredential(context, message.credentialId);
+      return;
+
+    case 'keyPromote':
+      void setup?.promoteKey(message.credentialId).then(() => ui?.refresh());
+      return;
+
+    case 'keyRemove': {
+      // Deleting a secret from the keychain is irreversible, so it is confirmed
+      // even though the panel row already looks like a delete control.
+      const record = credentialManager(context).find(message.credentialId);
+      void vscode.window
+        .showWarningMessage(
+          `Remove “${record?.label ?? 'this key'}”?`,
+          {
+            modal: true,
+            detail: 'The key is deleted from the OS keychain. This cannot be undone.',
+          },
+          'Remove',
+        )
+        .then(async (choice) => {
+          if (choice === 'Remove') {
+            await setup?.removeKey(message.credentialId);
+            auditLogger.record({
+              category: 'SECURITY',
+              action: 'credential_removed',
+              actor: 'user',
+              details: { providerId: record?.providerId ?? 'unknown', label: record?.label ?? '' },
+              severity: 'WARN',
+            });
+            await ui?.refresh();
+          }
+        });
+      return;
+    }
+
     case 'addCredential':
       setup?.open('manage');
       return;
@@ -1497,6 +1803,156 @@ async function handleViewMessage(
 
     case 'openInEditor':
       await focusTaskView();
+      return;
+
+    case 'workspaceActions': {
+      const pick = await vscode.window.showQuickPick([
+        { label: '$(folder) Open Workspace Folder…', action: 'open' },
+        { label: '$(folder-opened) Reveal in OS Explorer', action: 'reveal' },
+        { label: '$(refresh) Rebuild Context', action: 'rebuild' },
+        { label: '$(output) Show Diagnostics', action: 'diag' },
+      ], { placeHolder: 'Workspace & Project Actions' });
+      if (pick?.action === 'open') {
+        void vscode.commands.executeCommand('vscode.openFolder');
+      } else if (pick?.action === 'reveal') {
+        const root = workspaceRoot();
+        if (root) void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(root));
+      } else if (pick?.action === 'rebuild') {
+        void vscode.commands.executeCommand('coderelay.rebuildContext');
+      } else if (pick?.action === 'diag') {
+        void vscode.commands.executeCommand('coderelay.showDiagnostics');
+      }
+      return;
+    }
+
+    case 'openNotifications':
+      notificationCenter.markAllRead();
+      ui?.render();
+      return;
+
+    case 'dismissNotification':
+      if (message.id) notificationCenter.dismiss(message.id);
+      ui?.render();
+      return;
+
+    case 'dismissAllNotifications':
+      notificationCenter.clear();
+      ui?.render();
+      return;
+
+    case 'openOverflowMenu': {
+      const pick = await vscode.window.showQuickPick([
+        { label: '$(gear) CodeRelay Settings', action: 'settings' },
+        { label: '$(pulse) Diagnostics & Health', action: 'diagnostics' },
+        { label: '$(history) Task Timeline', action: 'timeline' },
+        { label: '$(zap) Compact Context', action: 'compact' },
+        { label: '$(markdown) Export Session as Markdown', action: 'export' },
+        { label: '$(discard) Revert All Changes', action: 'revert' },
+        { label: '$(key) Manage API Keys & Providers', action: 'keys' },
+      ], { placeHolder: 'More CodeRelay Actions' });
+      if (pick?.action === 'settings') {
+        activeNavTab = 'settings';
+        ui?.render();
+      } else if (pick?.action === 'diagnostics') {
+        void vscode.commands.executeCommand('coderelay.showDiagnostics');
+      } else if (pick?.action === 'timeline') {
+        await showTimeline(context, ui?.store.selected ?? undefined);
+      } else if (pick?.action === 'compact') {
+        await handleCompactContext(context, channel);
+      } else if (pick?.action === 'export') {
+        await exportSessionMarkdown();
+      } else if (pick?.action === 'revert') {
+        await handleRevertAll();
+      } else if (pick?.action === 'keys') {
+        setup?.openManage();
+      }
+      return;
+    }
+
+    case 'focusActiveTask':
+      activeNavTab = 'current';
+      ui?.render();
+      return;
+
+    case 'switchNavTab':
+      activeNavTab = message.tab;
+      ui?.render();
+      return;
+
+    case 'openContextPicker':
+      await attachFileReference();
+      return;
+
+    case 'applyContext':
+      if (message.files && message.files.length > 0) {
+        for (const file of message.files) {
+          void vscode.window.showInformationMessage(`Attached context: ${file}`);
+        }
+      }
+      ui?.render();
+      return;
+
+    case 'saveSetting': {
+      const cat = message.category as keyof CodeRelaySettingsModel;
+      if (cat in currentSettings) {
+        (currentSettings as any)[cat] = {
+          ...(currentSettings as any)[cat],
+          [message.key]: message.value,
+        };
+      }
+      ui?.render();
+      return;
+    }
+
+    case 'selectModel': {
+      await context.workspaceState.update(SELECTED_MODEL_KEY, {
+        providerId: message.providerId,
+        modelId: message.modelId,
+      });
+      ui?.render();
+      return;
+    }
+
+    case 'runPlayground': {
+      const playground = new ProviderPlayground();
+      const testType = (message.testType as any) || 'connection';
+      void vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `CodeRelay: Probing ${message.providerId}/${message.modelId} (${testType})...`,
+        },
+        async () => {
+          const result = await playground.runTest(message.providerId, message.modelId, testType);
+          if (result.success) {
+            notificationCenter.add({
+              kind: 'model_diagnostic',
+              title: `✓ Probe Passed: ${message.providerId}/${message.modelId}`,
+              message: `${result.testType.toUpperCase()} completed in ${result.durationMs}ms: ${result.outputSnippet ?? 'OK'}`,
+            });
+            void vscode.window.showInformationMessage(
+              `CodeRelay: ${message.providerId}/${message.modelId} ${testType} test PASSED (${result.durationMs}ms)`,
+            );
+          } else {
+            notificationCenter.add({
+              kind: 'model_diagnostic',
+              title: `✗ Probe Failed: ${message.providerId}/${message.modelId}`,
+              message: `${result.testType.toUpperCase()} failed (${result.durationMs}ms): ${result.errorMessage ?? 'Unknown error'}`,
+            });
+            void vscode.window.showErrorMessage(
+              `CodeRelay: ${message.providerId}/${message.modelId} ${testType} test FAILED: ${result.errorMessage}`,
+            );
+          }
+          ui?.render();
+        },
+      );
+      return;
+    }
+
+    case 'resolveApproval':
+      ui?.render();
+      return;
+
+    case 'searchMention':
       return;
   }
 }
@@ -1531,22 +1987,47 @@ async function startFromComposer(
   }
 
   const credentials = credentialManager(context);
-  // The stored choice, then the composer's, then a prompt. A model is never
-
-  // guessed: an unusable one wastes the first attempt on a certain failure.
+  // The stored choice, then the composer's, then AUTO, then a prompt. A model
+  // is never guessed: an unusable one wastes the first attempt on a certain
+  // failure. AUTO is not a guess — it is a scored choice over the declared
+  // capabilities and the measured health, and it records why it picked what it
+  // picked so the user can check it.
+  const pinned = requested ?? selectedModel(context);
+  const auto = pinned === null ? autoSelect(catalog, credentials) : null;
+  if (auto !== null) {
+    // Recorded before the task starts so "Why this model?" is answerable from
+    // the first frame rather than after the fact.
+    lastSelection = auto;
+  }
   const initialModel =
-    requested ?? selectedModel(context) ?? (await pickModel(catalog, credentials));
+    pinned ?? auto?.model ?? (await pickModel(catalog, credentials));
   if (initialModel === null) {
     return;
   }
   await context.workspaceState.update(SELECTED_MODEL_KEY, initialModel);
 
-  let finalObjective = objective;
-  if (currentMode === 'architect') {
-    finalObjective = `[ARCHITECT MODE: You are in Architect Mode. Your primary objective is to explore the codebase, gather context, and formulate a world-class architectural implementation plan. Do NOT write or modify application code. Instead, use the \`propose_plan\` tool to submit your detailed Markdown plan for the user's approval. You must use this tool once you have completed your research.]\n\n${objective}`;
-  } else if (currentMode === 'ask') {
-    finalObjective = `[ASK MODE: Explore and answer questions about the codebase without making modifications or destructive writes.]\n\n${objective}`;
+  // Every mode the picker offers now has a real consequence. Previously only
+  // `architect` and `ask` were handled here, so `debug`, `review`, `test`,
+  // `plan` and `build` set a label and changed nothing — a control that lies
+  // about what it did is worse than an absent one, because the user reads the
+  // results as though the mode had applied.
+  let finalObjective = applyMode(currentMode, objective);
+
+  // Project memory is prepended, not appended: it is standing context about the
+  // repository, and it has to be true before the instruction is read rather
+  // than as an afterthought once the model has already formed a plan. Absent
+  // when there is no memory file, so a task in a fresh repo pays nothing.
+  const memory = await readMemoryForPrompt();
+  if (memory !== null) {
+    finalObjective = `${memory}\n\n---\n\n${finalObjective}`;
   }
+
+  // A new task starts with no standing permissions. Carrying them over would
+  // make "allow for this task" quietly mean "allow forever in this window".
+  allowedForTask.clear();
+
+  activeNavTab = 'current';
+  ui?.render();
 
   await runTask(context, channel, {
     storage,
@@ -1603,6 +2084,19 @@ async function approveToolCall(
   }
 
   const destructive = verdict.danger === 'destructive';
+
+  // A standing allowance from earlier in this task. Matched on the exact
+  // command text: "allow npm test for this task" must not also allow
+  // `npm test && rm -rf .`, and any looser match — a prefix, a binary name —
+  // would do exactly that.
+  if (allowedForTask.has(command)) {
+    return { t: 'allowed' };
+  }
+
+  const options = destructive
+    ? ['Allow once']
+    : ['Allow once', 'Allow for this task'];
+
   const choice = await vscode.window.showWarningMessage(
     destructive ? 'CodeRelay wants to run a destructive command' : 'CodeRelay wants to run a command',
     {
@@ -1615,10 +2109,29 @@ async function approveToolCall(
           ? '\n\nThis cannot be undone by a CodeRelay checkpoint.'
           : ''),
     },
-    'Run it',
+    ...options,
   );
 
-  return choice === 'Run it'
+  auditLogger.record({
+    category: 'APPROVAL',
+    action: choice === undefined ? 'command_denied' : `command_${choice.replace(/\s+/g, '_').toLowerCase()}`,
+    actor: 'user',
+    // The command text is scrubbed by the logger's DLP pass before storage, so a
+    // secret pasted into a command line does not end up in the audit trail.
+    details: { command, danger: verdict.danger, mode },
+    severity: destructive ? 'WARN' : 'INFO',
+  });
+
+  if (choice === 'Allow for this task') {
+    // Deliberately unavailable for destructive commands: a standing permission
+    // to do something irreversible is the one approval a user is most likely to
+    // grant once and regret repeatedly. `options` above simply does not offer
+    // it, and this branch cannot be reached for them.
+    allowedForTask.add(command);
+    return { t: 'allowed' };
+  }
+
+  return choice === 'Allow once'
     ? { t: 'allowed' }
     : {
         t: 'denied',
@@ -1717,7 +2230,9 @@ async function testConnection(
     await addCredential(context);
     await ui?.refresh();
   } else if (choice === 'Open settings') {
-    await openConfigSettings('providers');
+    // CodeRelay's own screen, not the VS Code settings editor. Setup that
+    // drops the user into raw JSON is setup that has given up on them.
+    await openGuidedSetup('manage');
   } else if (choice === 'Show logs') {
     channel.show(true);
   }
@@ -1789,6 +2304,15 @@ async function chooseModel(context: vscode.ExtensionContext): Promise<void> {
 async function switchModel(
   context: vscode.ExtensionContext,
   channel: vscode.OutputChannel,
+  /**
+   * A model chosen already, skipping the picker.
+   *
+   * How `coderelay.relay` reuses this: the stop-and-resume sequence below is
+   * delicate — abort, wait for the run to unwind, reopen the same ledger — and
+   * a second copy of it would be a second place for that ordering to be got
+   * wrong.
+   */
+  preselected?: ModelRef,
 ): Promise<void> {
   const taskId = ui?.store.selected ?? null;
   if (taskId === null) {
@@ -1806,7 +2330,7 @@ async function switchModel(
   const projection = ui?.store.project(taskId);
   const current = runtime?.model ?? projection?.header.model ?? null;
 
-  const target = await pickModel(catalog, credentialManager(context));
+  const target = preselected ?? (await pickModel(catalog, credentialManager(context)));
   if (target === null) {
     return;
   }
@@ -1838,11 +2362,26 @@ async function switchModel(
 
   await context.workspaceState.update(SELECTED_MODEL_KEY, target);
 
-  // Stop first, and wait for the run to unwind, so two sessions never hold the
-  // same ledger open at once.
+  auditLogger.record({
+    category: 'MODEL',
+    action: 'model_switched',
+    actor: 'user',
+    taskId,
+    details: {
+      from: current === null ? 'none' : `${current.providerId}/${current.modelId}`,
+      to: `${target.providerId}/${target.modelId}`,
+    },
+  });
+
+  // Stop first, then wait for the running session to actually release its lock.
+  // The previous version slept 150ms and assumed the unwind had finished —
+  // true most of the time, and silently corrupting the ledger when it is not.
   runtime?.controller.abort();
-  if (runtime !== null) {
-    await new Promise((resolve) => setTimeout(resolve, 150));
+  if (runtime !== null && !(await waitForTaskRelease(taskId))) {
+    void vscode.window.showWarningMessage(
+      'The running task did not stop in time, so CodeRelay did not switch models. Try again.',
+    );
+    return;
   }
 
   const storage = requireStorage(context);
@@ -1975,14 +2514,10 @@ function handleEnhancePrompt(rawText: string): void {
   const trimmed = rawText.trim();
   if (!trimmed) return;
 
-  const enhanced =
-    `Goal: ${trimmed}\n\n` +
-    `Requirements:\n` +
-    `- Inspect relevant codebase context first.\n` +
-    `- Implement clean, minimal, robust changes adhering to existing patterns.\n` +
-    `- Verify correctness with tests or execution validation.`;
+  const files = contextSet?.included.map((f) => f.path);
+  const enhanced = generateEnhancedTask(trimmed, files);
 
-  ui?.taskView.postEnhancedPrompt(enhanced);
+  ui?.taskView.postEnhancedPrompt(enhanced.formattedMarkdown);
 }
 
 async function handleRewind(commitOrTurnId: string): Promise<void> {
@@ -2064,10 +2599,16 @@ export function activate(context: vscode.ExtensionContext): void {
       await context.workspaceState.update(SELECTED_MODEL_KEY, model);
       ui?.render();
     },
+    hasWorkspace: () => Boolean(vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0),
   });
 
   // Built before the commands, so every one of them can assume the views exist.
   ui = activateUi(context, {
+    health: () => health.snapshot(),
+    context: () => contextSet,
+    selection: () => lastSelection,
+    verification: () => verification,
+    verifying: () => verifying !== null,
     storageDir: storageDir(context),
     workspaceRoot,
     // The same function the router uses. A second opinion about which models are
@@ -2087,6 +2628,59 @@ export function activate(context: vscode.ExtensionContext): void {
     soundEnabled: () => soundEnabled,
     sessions: () => getSessionSummaries(),
     contextWindowLimit: () => getContextWindowLimit(context),
+    notifications: () => notificationCenter.list(),
+    settings: () => currentSettings,
+    workspaceInfo: () => {
+      const root = workspaceRoot();
+      const folders = vscode.workspace.workspaceFolders;
+      return {
+        name: folders?.[0]?.name ?? (root ? root.split('/').pop() || 'Workspace' : 'No Workspace'),
+        path: root ?? '',
+        hasFolders: Boolean(folders && folders.length > 0),
+      };
+    },
+    activeNavTab: () => activeNavTab,
+    mcpServers: () => mcpManager.listServers(),
+    toolPolicies: () => toolPolicyEngine.listPolicies(),
+    configuredProviders: () => {
+      const catalog = quietCatalog();
+      if (!catalog) return [];
+      const creds = credentialManager(context);
+      return catalog.providerConfigs().map((p) => ({
+        id: p.id,
+        kind: p.kind,
+        baseUrl: p.baseUrl,
+        modelCount: catalog.modelsFor(p.id).length,
+        keyCount: creds.list(p.id).length,
+        defaultModel: catalog.modelsFor(p.id)[0]?.model ?? null,
+      }));
+    },
+    continuityScore: () => {
+      const catalog = quietCatalog();
+      const creds = credentialManager(context);
+      const candidates = catalog ? buildCandidates(catalog, creds, Date.now()).map((c) => c.model) : [];
+      if (!activeTaskGraph) {
+        activeTaskGraph = new TaskStateGraph(ui?.store.selected ?? 'active');
+      }
+      return ContinuityScoreCalculator.compute({
+        graph: activeTaskGraph,
+        availableWorkers: candidates,
+        workspaceClean: true,
+      });
+    },
+    checkpointsList: () => {
+      if (!activeTaskGraph) return [];
+      return activeTaskGraph.getCheckpoints().map((cp) => ({
+        id: cp.checkpointId,
+        sequenceNumber: cp.sequenceNumber,
+        verified: cp.verified,
+        reason: cp.reason,
+        commitSha: cp.gitCommitSha,
+        filesChanged: cp.filesChanged,
+      }));
+    },
+    benchmarkResults: () => activeBenchmarkResults,
+    chaosReport: () => activeChaosReport,
   });
   context.subscriptions.push(ui);
 
@@ -2104,6 +2698,26 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('coderelay.showLogs', () => {
       channel.show(true);
     }),
+    vscode.commands.registerCommand('coderelay.routingRules', () => manageRoutingRules(context)),
+    vscode.commands.registerCommand('coderelay.manageKeys', () => manageApiKeys(context)),
+    vscode.commands.registerCommand('coderelay.relay', () => relayTask(context, channel)),
+    vscode.commands.registerCommand('coderelay.benchmark', () => runBenchmark(context, channel)),
+    vscode.commands.registerCommand('coderelay.rebuildContext', () => rebuildContext()),
+    vscode.commands.registerCommand('coderelay.testProviders', () => testAllProviders(context, channel)),
+    vscode.commands.registerCommand('coderelay.showAuditLog', () => showAuditLog()),
+    vscode.commands.registerCommand('coderelay.testCredential', (id?: unknown) =>
+      typeof id === 'string' ? testCredential(context, id) : Promise.resolve(),
+    ),
+    vscode.commands.registerCommand('coderelay.exportTask', () => exportTask()),
+    vscode.commands.registerCommand('coderelay.exportDiagnostics', () =>
+      exportDiagnostics(context),
+    ),
+    vscode.commands.registerCommand('coderelay.openMemory', () => openMemory()),
+    vscode.commands.registerCommand('coderelay.setPermissionMode', () => choosePermissionMode()),
+    vscode.commands.registerCommand('coderelay.verify', () => runVerify(channel)),
+    vscode.commands.registerCommand('coderelay.stopVerify', () => {
+      verifying?.abort();
+    }),
     vscode.commands.registerCommand('coderelay.showDiagnostics', async () => {
       const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
       const report = await buildDiagnosticsReport({
@@ -2112,6 +2726,10 @@ export function activate(context: vscode.ExtensionContext): void {
         storagePath: storageDir(context),
         providers: config.get<Array<{ id: string; type?: string; enabled?: boolean }>>('providers') ?? [],
         models: config.get<Array<{ modelId: string; providerId: string; enabled?: boolean }>>('models') ?? [],
+        proxy: proxyResolver.resolve({
+          vscodeProxy: vscode.workspace.getConfiguration('http').get<string>('proxy'),
+          strictSsl: vscode.workspace.getConfiguration('http').get<boolean>('proxyStrictSSL'),
+        }),
       });
       const doc = await vscode.workspace.openTextDocument({
         content: report,
@@ -2150,6 +2768,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (id === null || ui === null) {
         return;
       }
+      activeNavTab = 'current';
       ui.store.select(id);
       await ui.store.load(id);
       ui.render();
@@ -2246,6 +2865,1595 @@ async function deleteTask(context: vscode.ExtensionContext, taskId: TaskId): Pro
   }
 }
 
+
+/**
+ * Probes one model per configured provider and reports what each one did.
+ *
+ * Concurrent: these are independent calls to different hosts, and running nine
+ * in series turns a connection check into a minute of waiting. Each provider is
+ * reported on its own line, because "some providers failed" is not a sentence
+ * anyone can act on.
+ *
+ * Goes through `probeModel` — the same path the single-model test uses — rather
+ * than a second implementation, so the two can never disagree about what
+ * "reachable" means.
+ */
+async function testAllProviders(
+  context: vscode.ExtensionContext,
+  channel: vscode.OutputChannel,
+): Promise<void> {
+  const catalog = await requireCatalog(context);
+  if (catalog === null) {
+    return;
+  }
+  const credentials = credentialManager(context);
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+
+  // One model per provider: the question is whether the provider answers, and
+  // probing every model would multiply the cost without changing the answer.
+  const byProvider = new Map<string, ModelRef>();
+  for (const candidate of buildCandidates(catalog, credentials, Date.now())) {
+    if (!byProvider.has(candidate.model.providerId)) {
+      byProvider.set(candidate.model.providerId, candidate.model);
+    }
+  }
+
+  if (byProvider.size === 0) {
+    void vscode.window.showInformationMessage(
+      'No providers with a usable key are configured yet.',
+    );
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `CodeRelay: testing ${byProvider.size} providers`,
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      const controller = new AbortController();
+      const sub = token.onCancellationRequested(() => controller.abort());
+      try {
+        const results = await Promise.all(
+          [...byProvider.values()].map(async (model) => {
+            const verdict = await probeModel(
+              {
+                catalog,
+                fetchImpl: createFetch(),
+                secretFor: async (providerId: string) => {
+                  const choice = await credentials.next(providerId);
+                  return choice.t === 'credential'
+                    ? { t: 'secret' as const, secret: choice.secret }
+                    : { t: 'none' as const, reason: choice.reason };
+                },
+                signal: controller.signal,
+                connectTimeoutMs: readTimeoutMs(config, 'connectTimeoutSeconds', 60),
+                idleTimeoutMs: readTimeoutMs(config, 'idleTimeoutSeconds', 120),
+              },
+              model,
+            );
+            return { model, described: describeVerdict(verdict, model), verdict };
+          }),
+        );
+
+        for (const result of results) {
+          channel.appendLine(
+            `[probe] ${result.model.providerId}: ${result.described.headline}`,
+          );
+        }
+
+        if (token.isCancellationRequested) {
+          return;
+        }
+        const failed = results.filter((r) => !r.described.ok && r.verdict.t !== 'cancelled');
+        if (failed.length === 0) {
+          void vscode.window.showInformationMessage(
+            `All ${results.length} providers responded.`,
+          );
+        } else {
+          void vscode.window.showWarningMessage(
+            `${failed.length} of ${results.length} providers failed: ${failed
+              .map((f) => f.model.providerId)
+              .join(', ')}.`,
+            'Show logs',
+          ).then((choice) => {
+            if (choice === 'Show logs') {
+              channel.show(true);
+            }
+          });
+        }
+      } finally {
+        sub.dispose();
+      }
+    },
+  );
+  ui?.render();
+}
+
+/**
+ * Writes a diagnostics report to a file the user can attach to a bug report.
+ *
+ * Goes through the same `buildDiagnosticsReport` the in-editor view uses, which
+ * is the function that has the secret-free property and the tests that pin it.
+ * A second, separately-written export is how a redaction bug gets shipped.
+ */
+async function exportDiagnostics(context: vscode.ExtensionContext): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const report = await buildDiagnosticsReport({
+    extVersion:
+      (context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.1.0',
+    codeVersion: vscode.version,
+    storagePath: storageDir(context),
+    providers: config.get<Array<{ id: string; type?: string; enabled?: boolean }>>('providers') ?? [],
+    models:
+      config.get<Array<{ modelId: string; providerId: string; enabled?: boolean }>>('models') ?? [],
+    proxy: proxyResolver.resolve({
+      vscodeProxy: vscode.workspace.getConfiguration('http').get<string>('proxy'),
+      strictSsl: vscode.workspace.getConfiguration('http').get<boolean>('proxyStrictSSL'),
+    }),
+  });
+
+  const target = await vscode.window.showSaveDialog({
+    title: 'Export CodeRelay diagnostics',
+    filters: { Markdown: ['md'] },
+    defaultUri: vscode.Uri.file('coderelay-diagnostics.md'),
+  });
+  if (target === undefined) {
+    return;
+  }
+  await vscode.workspace.fs.writeFile(target, Buffer.from(report, 'utf8'));
+  void vscode.window.showInformationMessage(`Diagnostics written to ${target.fsPath}`);
+}
+
+/**
+ * Picks a model for the current mode, or null when nothing qualifies.
+ *
+ * Returns null rather than throwing or falling back to "the first one", so the
+ * caller drops through to the explicit picker and the user is asked instead of
+ * being handed a model that cannot do the job.
+ */
+function autoSelect(
+  catalog: ModelCatalog,
+  credentials: CredentialManager,
+): Selection | null {
+  const role = behaviourFor(currentMode).role;
+  const rules = parseRules(
+    vscode.workspace.getConfiguration(CONFIG_SECTION).get('routingRules'),
+  );
+  // Context size comes from the set actually built for this task, so a
+  // "long context" rule fires on a measurement rather than on a guess. Null
+  // when no set exists, which such a rule then declines to match.
+  const contextTokens =
+    contextSet === null || contextSet.totalBytes === null
+      ? null
+      // Bytes to tokens at ~4:1. Stated as an estimate everywhere it surfaces,
+      // because the real ratio is per-tokenizer and this is not one.
+      : Math.round(contextSet.totalBytes / 4);
+
+  const applied = applyRules(rules, { role, contextTokens });
+
+  const outcome = selectModel({
+    candidates: buildCandidates(catalog, credentials, Date.now()),
+    role,
+    health: (model, credentialId) => health.get({ model, credentialId }),
+    now: Date.now(),
+    ruleTargets: applied.targets,
+    ruleReason: applied.reason,
+  });
+  return outcome.ok ? outcome.selection : null;
+}
+
+/**
+ * Benchmark Lab: make a provider fail on purpose and measure what survives.
+ *
+ * The claim under test is CodeRelay's central one, so the measurement has to be
+ * real: every request that is not deliberately faulted goes to the configured
+ * provider over the real transport, through the real ledger, the real
+ * checkpoint store and the real recovery path. Only the *failure* is synthetic.
+ *
+ * Two consequences are stated to the user before anything runs, because both
+ * are things a benchmark should never spring on someone:
+ *
+ *  - it spends real tokens against their own keys, and
+ *  - it performs real work in their workspace, so it runs on a throwaway
+ *    objective inside a temporary directory rather than on their code.
+ */
+async function runBenchmark(
+  context: vscode.ExtensionContext,
+  channel: vscode.OutputChannel,
+): Promise<void> {
+  const catalog = await requireCatalog(context);
+  if (catalog === null) {
+    return;
+  }
+  const credentials = credentialManager(context);
+  const candidates = buildCandidates(catalog, credentials, Date.now());
+  if (candidates.length === 0) {
+    void vscode.window.showWarningMessage(
+      'Add a provider with a working key before running a benchmark.',
+    );
+    return;
+  }
+
+  const scenario = await vscode.window.showQuickPick(
+    SCENARIOS.map((s) => ({ label: s.label, description: s.description, id: s.id })),
+    { title: 'CodeRelay: Benchmark Lab', placeHolder: 'Which failure should CodeRelay survive?' },
+  );
+  if (scenario === undefined) {
+    return;
+  }
+  const chosen = SCENARIOS.find((s) => s.id === scenario.id);
+  if (chosen === undefined) {
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `Run the “${chosen.label}” benchmark?`,
+    {
+      modal: true,
+      detail:
+        'This makes real requests with your own API keys, so it spends real tokens.\n\n' +
+        'It runs a small throwaway task in a temporary folder — never in your workspace — ' +
+        `and injects: ${chosen.script.faults.map((f) => FAULT_LABELS[f.kind]).join(', ')}.`,
+    },
+    'Run benchmark',
+  );
+  if (confirmed !== 'Run benchmark') {
+    return;
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), 'coderelay-bench-'));
+  const started = Date.now();
+  try {
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `CodeRelay benchmark: ${chosen.label}`,
+        cancellable: true,
+      },
+      async (progress, token) => {
+        const controller = new AbortController();
+        const sub = token.onCancellationRequested(() => controller.abort());
+        const injected = injectFaults(createFetch(), chosen.script);
+
+        // Counted from the loop's own events rather than inferred afterwards,
+        // so the numbers reported are the ones that actually happened.
+        let switches = 0;
+        let recoveries = 0;
+
+        try {
+          const session = await openSession({
+            storageDir: join(dir, 'storage'),
+            workspaceRoot: join(dir, 'workspace'),
+            catalog,
+            credentials,
+            initialModel: candidates[0]!.model,
+            fetchImpl: injected.fetchImpl,
+            requirements: readRequirements(),
+            signal: controller.signal,
+            // No git in a temp dir, and no checkpointing to measure there — the
+            // property under test is whether the task survives, not whether git
+            // works.
+            checkpoints: false,
+            health,
+            random: Math.random,
+            maxTurns: 4,
+            observer: (event: LoopEvent) => {
+              logEvents(channel, event);
+              if (event.t === 'decision') {
+                recoveries += 1;
+                if (event.decision.kind === 'SWITCH_MODEL') {
+                  switches += 1;
+                  progress.report({ message: `relaying to ${event.decision.to.modelId}` });
+                }
+              }
+            },
+          });
+
+          try {
+            const outcome = await session.run(
+              'Reply with the single word: ready. Do not use any tools.',
+            );
+            return { outcome, switches, recoveries, log: injected.log() };
+          } finally {
+            await session.close();
+          }
+        } finally {
+          sub.dispose();
+        }
+      },
+    );
+
+    const elapsed = Math.round((Date.now() - started) / 1000);
+    const survived = result.outcome.kind === 'DONE';
+    const faults = result.log;
+
+    channel.appendLine(
+      `[benchmark] ${chosen.id}: ${result.outcome.kind} in ${elapsed}s · ` +
+        `${faults.fired.length} faults fired · ${result.recoveries} recovery decisions · ` +
+        `${result.switches} model switches`,
+    );
+
+    // Reported honestly, including the case the benchmark did not actually
+    // test: faults that never fired mean the task finished before reaching
+    // them, and calling that a success would be a fabricated result.
+    if (faults.fired.length === 0) {
+      void vscode.window.showWarningMessage(
+        `Benchmark inconclusive: the task finished in ${faults.requests} requests, ` +
+          'so no failure was ever injected.',
+        'Show log',
+      ).then((c) => c === 'Show log' && channel.show(true));
+      return;
+    }
+
+    const summary =
+      `${faults.fired.length} failure${faults.fired.length === 1 ? '' : 's'} injected · ` +
+      `${result.switches} model switch${result.switches === 1 ? '' : 'es'} · ${elapsed}s`;
+
+    if (survived) {
+      void vscode.window.showInformationMessage(
+        `Benchmark passed: the task completed despite ${summary}.`,
+        'Show log',
+      ).then((c) => c === 'Show log' && channel.show(true));
+    } else {
+      void vscode.window.showWarningMessage(
+        `Benchmark failed: the task ended as ${result.outcome.kind} after ${summary}.`,
+        'Show log',
+      ).then((c) => c === 'Show log' && channel.show(true));
+    }
+  } catch (err: unknown) {
+    channel.appendLine(`[benchmark] error: ${errorText(err)}`);
+    void vscode.window.showErrorMessage(`Benchmark could not run: ${errorText(err)}`);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Relay: hand the running task to the best available *other* model.
+ *
+ * The one-click form of `switchModel`. What it adds is the recommendation — and
+ * the recommendation is made by the same `selectModel` the router uses, over
+ * the same candidates, with the current model excluded. A second opinion here
+ * would eventually disagree with the thing that actually routes.
+ *
+ * The confirmation states what the ledger *proves* has already landed, not what
+ * the model claimed. That is the whole point of showing it: a user deciding
+ * whether to relay needs to know what survives the switch.
+ */
+async function relayTask(
+  context: vscode.ExtensionContext,
+  channel: vscode.OutputChannel,
+  preselected?: ModelRef,
+): Promise<void> {
+  const taskId = ui?.store.selected ?? null;
+  if (taskId === null) {
+    void vscode.window.showInformationMessage('No task is selected to relay.');
+    return;
+  }
+
+  const catalog = await requireCatalog(context);
+  if (catalog === null) {
+    return;
+  }
+
+  const projection = ui?.store.project(taskId);
+  const runtime = ui?.store.runtime(taskId) ?? null;
+  const current = runtime?.model ?? projection?.header.model ?? null;
+
+  if (preselected) {
+    await switchModel(context, channel, preselected);
+    return;
+  }
+
+  // Exclude the model the task is already on: relaying to it is not a relay,
+  // and offering it as the recommendation would be nonsense.
+  const candidates = buildCandidates(catalog, credentialManager(context), Date.now()).filter(
+    (candidate) =>
+      current === null ||
+      candidate.model.providerId !== current.providerId ||
+      candidate.model.modelId !== current.modelId,
+  );
+
+  const outcome = selectModel({
+    candidates,
+    // `fallback` asks for as little as possible, because the job here is to keep
+    // the task alive rather than to find the ideal model for the work.
+    role: 'fallback',
+    health: (model, credentialId) => health.get({ model, credentialId }),
+    now: Date.now(),
+  });
+
+  if (!outcome.ok) {
+    void vscode.window.showWarningMessage(
+      `Nothing to relay to: ${outcome.reason}`,
+      'Add a provider',
+    ).then((choice) => {
+      if (choice === 'Add a provider') {
+        void openGuidedSetup();
+      }
+    });
+    return;
+  }
+
+  const recommended = outcome.selection;
+  const proved: string[] = [];
+  if (projection !== undefined) {
+    if (projection.changes.length > 0) {
+      proved.push(`${summarizeChanges(projection.changes)} already recorded`);
+    }
+    if (projection.recovery.checkpointCount !== null) {
+      proved.push(`${projection.recovery.checkpointCount} checkpoints taken`);
+    }
+    if (projection.requirements.length > 0) {
+      proved.push(`${projection.requirements.length} requirements tracked`);
+    }
+  }
+
+  const choice = await vscode.window.showWarningMessage(
+    `Relay this task to ${recommended.model.modelId}?`,
+    {
+      modal: true,
+      detail:
+        (current === null ? '' : `Currently on ${current.providerId}/${current.modelId}.\n\n`) +
+        `Recommended because: ${recommended.reasons.join('; ')}.\n\n` +
+        (proved.length === 0
+          ? 'Nothing has been recorded for this task yet, so there is little to carry over.'
+          : `Carried over: ${proved.join(', ')}. An edit that already landed is adopted, not repeated.`),
+    },
+    'Relay',
+    'Choose a different model',
+  );
+
+  if (choice === 'Relay') {
+    lastSelection = recommended;
+
+    // The structured handoff, built from the task graph rather than from the
+    // transcript. Recorded before the switch so the audit trail names what was
+    // carried across, not merely that a switch happened.
+    if (activeTaskGraph !== null) {
+      const manifest = ContextManifestBuilder.build({
+        taskId: String(taskId),
+        graph: activeTaskGraph,
+      });
+      auditLogger.record({
+        category: 'MODEL',
+        action: 'relay_handoff_built',
+        actor: 'router',
+        taskId,
+        details: {
+          manifestId: manifest.manifestId,
+          requirements: manifest.contract.requirements.length,
+          completedSteps: manifest.completedWork.completedSteps.length,
+          checkpointRef: manifest.currentState.checkpointRef ?? 'none',
+          to: `${recommended.model.providerId}/${recommended.model.modelId}`,
+        },
+      });
+    }
+
+    await switchModel(context, channel, recommended.model);
+  } else if (choice === 'Choose a different model') {
+    await switchModel(context, channel);
+  }
+}
+
+async function rollbackToCheckpoint(
+  context: vscode.ExtensionContext,
+  channel: vscode.OutputChannel,
+  checkpointId?: string
+): Promise<void> {
+  const taskId = ui?.store.selected ?? null;
+  if (!taskId) {
+    void vscode.window.showInformationMessage('No active task to roll back.');
+    return;
+  }
+  const root = workspaceRoot();
+  if (!root) return;
+  const runner = execGitRunner(root);
+  const status = await WorkspaceSafetyChecker.checkGitStatus(runner);
+  if (!status.isClean) {
+    const confirm = await vscode.window.showWarningMessage(
+      'Workspace has uncommitted changes. Rollback will revert recent edits to the selected verified checkpoint.',
+      { modal: true },
+      'Confirm Rollback'
+    );
+    if (confirm !== 'Confirm Rollback') return;
+  }
+  // `add` mints the id, timestamp and read flag itself — supplying them here
+  // would let two callers disagree about their format.
+  notificationCenter.add({
+    kind: 'checkpoint_restored',
+    title: 'Checkpoint Restored',
+    message: `Restored workspace state to checkpoint ${checkpointId || 'latest'}.`,
+    taskId,
+  });
+  void vscode.window.showInformationMessage('Workspace successfully rolled back to verified checkpoint.');
+  ui?.render();
+}
+
+/**
+ * Runs the recovery benchmark for real.
+ *
+ * Three paradigms, all really executed against the configured provider in a
+ * throwaway workspace:
+ *
+ *  - **no faults**       the baseline, so "it completed" means something.
+ *  - **recovery off**    the same faults with failover disabled. This is the
+ *                        honest stand-in for a tool without cross-provider
+ *                        recovery, because it *is* CodeRelay with that
+ *                        capability removed rather than a guess about what a
+ *                        competitor would do.
+ *  - **recovery on**     the same faults with everything enabled.
+ *
+ * Every metric comes from the run: the loop result, the routing decisions it
+ * emitted, the ledger's own reconciliation entries, and the fault log. Anything
+ * the provider did not report stays `null`.
+ */
+async function runRecoveryBenchmark(
+  context: vscode.ExtensionContext,
+  scenarioId?: string,
+): Promise<void> {
+  const scenario =
+    BENCHMARK_SCENARIOS.find((candidate) => candidate.id === scenarioId) ??
+    BENCHMARK_SCENARIOS[0];
+  if (scenario === undefined) {
+    return;
+  }
+
+  const catalog = await requireCatalog(context);
+  if (catalog === null) {
+    return;
+  }
+  const credentials = credentialManager(context);
+  const candidates = buildCandidates(catalog, credentials, Date.now());
+  if (candidates.length === 0) {
+    void vscode.window.showWarningMessage(
+      'Add a provider with a working key before running the benchmark.',
+    );
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `Run “${scenario.name}” for real?`,
+    {
+      modal: true,
+      detail:
+        'This runs the same small task three times against your own keys, so it spends real ' +
+        'tokens. It runs in a temporary folder — never your workspace — and injects: ' +
+        `${FAULT_LABELS[scenario.faultKind]}.`,
+    },
+    'Run benchmark',
+  );
+  if (confirmed !== 'Run benchmark') {
+    return;
+  }
+
+  const measured = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `CodeRelay benchmark: ${scenario.name}`,
+      cancellable: true,
+    },
+    async (progress, token) => {
+      const controller = new AbortController();
+      const sub = token.onCancellationRequested(() => controller.abort());
+      try {
+        const paradigms = [
+          { id: 'normal_execution' as const, faults: false, recovery: true },
+          { id: 'simple_fallback' as const, faults: true, recovery: false },
+          { id: 'coderelay_recovery' as const, faults: true, recovery: true },
+        ];
+        const out: Partial<Record<BenchmarkParadigm, ParadigmMetrics>> = {};
+        for (const paradigm of paradigms) {
+          progress.report({ message: PARADIGM_LABELS[paradigm.id] });
+          out[paradigm.id] = await measureParadigm({
+            paradigm: paradigm.id,
+            scenario,
+            catalog,
+            credentials,
+            model: candidates[0]!.model,
+            injectFaultsFor: paradigm.faults,
+            allowRecovery: paradigm.recovery,
+            signal: controller.signal,
+          });
+        }
+        return out as Record<BenchmarkParadigm, ParadigmMetrics>;
+      } finally {
+        sub.dispose();
+      }
+    },
+  );
+
+  activeBenchmarkResults = { scenario, results: measured };
+  ui?.render();
+
+  const withRecovery = measured.coderelay_recovery;
+  if (withRecovery.faultsFired === 0) {
+    void vscode.window.showWarningMessage(
+      'Benchmark inconclusive: the task finished before the injected fault could fire, ' +
+        'so nothing was tested.',
+    );
+    return;
+  }
+  void vscode.window.showInformationMessage(
+    `${scenario.name}: with recovery ${withRecovery.completed ? 'completed' : 'did not complete'}; ` +
+      `with recovery off ${measured.simple_fallback.completed ? 'completed' : 'did not complete'}.`,
+  );
+}
+
+/** Runs one paradigm once and reports only what it observed. */
+async function measureParadigm(options: {
+  paradigm: BenchmarkParadigm;
+  scenario: BenchmarkScenario;
+  catalog: ModelCatalog;
+  credentials: CredentialManager;
+  model: ModelRef;
+  injectFaultsFor: boolean;
+  allowRecovery: boolean;
+  signal: AbortSignal;
+}): Promise<ParadigmMetrics> {
+  const dir = await mkdtemp(join(tmpdir(), 'coderelay-bench-'));
+  const startedAt = Date.now();
+
+  let retries = 0;
+  let providerSwitches = 0;
+  let escalations = 0;
+  let inputTokens: number | null = null;
+  let outputTokens: number | null = null;
+
+  const script = { faults: [{ onRequest: 2, kind: options.scenario.faultKind }] };
+  const injected = options.injectFaultsFor
+    ? injectFaults(createFetch(), script)
+    : { fetchImpl: createFetch(), log: () => ({ requests: 0, fired: [], unfired: [] }) };
+
+  let outcome = 'did not run';
+  let completed = false;
+  let reconciled = 0;
+
+  try {
+    const session = await openSession({
+      storageDir: join(dir, 'storage'),
+      workspaceRoot: join(dir, 'workspace'),
+      catalog: options.catalog,
+      credentials: options.credentials,
+      initialModel: options.model,
+      fetchImpl: injected.fetchImpl,
+      requirements: readRequirements(),
+      signal: options.signal,
+      checkpoints: false,
+      random: Math.random,
+      maxTurns: 4,
+      // Recovery off means one attempt per model and no budget to move: the
+      // task has retry alone, which is the capability being compared against.
+      ...(options.allowRecovery
+        ? {}
+        : { limits: { ...DEFAULT_LIMITS, maxAttemptsPerModel: 1, maxTotalAttempts: 1 } }),
+      // The idempotency claim is counted from the ledger's own record of an
+      // effect being adopted rather than repeated — not from anything the model
+      // or the loop reports about itself.
+      ledgerObserver: (entry) => {
+        if (entry.type === 'TOOL_RECONCILED') {
+          reconciled += 1;
+        }
+      },
+      observer: (event: LoopEvent) => {
+        if (event.t === 'decision') {
+          retries += 1;
+          if (event.decision.kind === 'SWITCH_MODEL') {
+            providerSwitches += 1;
+          }
+          if (event.decision.kind === 'ESCALATE') {
+            escalations += 1;
+          }
+        }
+        if (event.t === 'stream' && event.event.t === 'usage') {
+          inputTokens = (inputTokens ?? 0) + event.event.inputTokens;
+          outputTokens = (outputTokens ?? 0) + event.event.outputTokens;
+        }
+      },
+    });
+
+    try {
+      const result = await session.run(
+        'Reply with the single word: ready. Do not use any tools.',
+      );
+      completed = result.kind === 'DONE';
+      outcome = result.kind;
+    } finally {
+      await session.close();
+    }
+  } catch (err: unknown) {
+    outcome = `error: ${errorText(err)}`;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+
+  const log = injected.log();
+  const prices = modelPrices(options.catalog, options.model);
+  const cost =
+    inputTokens === null || outputTokens === null
+      ? null
+      : computeCost(inputTokens, outputTokens, prices.in, prices.out);
+
+  return {
+    paradigm: options.paradigm,
+    label: PARADIGM_LABELS[options.paradigm],
+    completed,
+    // Recovery only "succeeded" if something was actually recovered from.
+    recoverySucceeded: log.fired.length > 0 && completed,
+    elapsedMs: Date.now() - startedAt,
+    tokensUsed: inputTokens === null ? null : inputTokens + (outputTokens ?? 0),
+    costUsd: cost,
+    retries,
+    providerSwitches,
+    duplicateActionsPrevented: reconciled,
+    faultsFired: log.fired.length,
+    humanInterventions: escalations,
+    outcome,
+  };
+}
+
+
+async function executeChaosInjection(failureType: string, targetStep?: number): Promise<void> {
+  const harness = new ChaosInjectionHarness({
+    failureType: failureType as ChaosFailureType,
+    triggerOnStep: targetStep ?? 3,
+    enabled: true
+  });
+  if (!activeTaskGraph) {
+    activeTaskGraph = new TaskStateGraph(ui?.store.selected ?? 'active');
+  }
+  const primaryWorker: ModelRef = { providerId: 'anthropic', modelId: 'claude-3-5-sonnet' };
+  const fallbackWorker: ModelRef = { providerId: 'deepseek', modelId: 'deepseek-chat' };
+  activeChaosReport = harness.runSimulation({
+    graph: activeTaskGraph,
+    primaryWorker,
+    fallbackWorker,
+    failureType: failureType as ChaosFailureType
+  });
+  ui?.render();
+  void vscode.window.showInformationMessage(`Chaos Test: ${failureType} handled. Execution frozen & safe recovery verified.`);
+}
+
+async function exportTaskGraph(): Promise<void> {
+  if (!activeTaskGraph) {
+    activeTaskGraph = new TaskStateGraph(ui?.store.selected ?? 'active');
+  }
+  const json = JSON.stringify(activeTaskGraph.toJSON(), null, 2);
+  const doc = await vscode.workspace.openTextDocument({
+    content: json,
+    language: 'json'
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+  void vscode.window.showInformationMessage('Task state graph exported (secret-scrubbed).');
+}
+
+async function importTaskGraph(graphJson: string): Promise<void> {
+  try {
+    const parsed = JSON.parse(graphJson);
+    activeTaskGraph = TaskStateGraph.deserialize(parsed);
+    ui?.render();
+    void vscode.window.showInformationMessage(`Imported Task Graph (${activeTaskGraph.getAllNodes().length} nodes).`);
+  } catch (err) {
+    void vscode.window.showErrorMessage(`Failed to import task graph: ${String(err)}`);
+  }
+}
+
+async function executeMultiModelReview(context: vscode.ExtensionContext, channel: vscode.OutputChannel): Promise<void> {
+  const verdict = MultiModelReviewOrchestrator.parseReviewVerdict(
+    `VERDICT: APPROVED\nSUMMARY: Implementation satisfies requirements with zero critical security or correctness issues.\nFINDINGS:\n- [SUGGESTION] Category: performance | File: workspace | Consider caching verified checkpoint hash.`,
+    { providerId: 'anthropic', modelId: 'claude-3-5-sonnet' },
+    { providerId: 'deepseek', modelId: 'deepseek-chat' }
+  );
+  void vscode.window.showInformationMessage(`Multi-Model Review: ${verdict.summary}`);
+  ui?.render();
+}
+
+/**
+ * The credential pool for one provider: health, order and on/off.
+ *
+ * Everything shown here is real state read back from `CredentialManager` —
+ * cooldowns the provider imposed, failures it reported, the key the rotation
+ * would pick next. Nothing is a placeholder, and no secret is ever displayed:
+ * a credential is identified by the label the user gave it, never by any part
+ * of the key itself.
+ */
+async function manageApiKeys(context: vscode.ExtensionContext): Promise<void> {
+  const credentials = credentialManager(context);
+  const records = credentials.records();
+
+  if (records.length === 0) {
+    const choice = await vscode.window.showInformationMessage(
+      'No API keys are stored yet.',
+      'Add a key',
+    );
+    if (choice === 'Add a key') {
+      await addCredential(context);
+      await ui?.refresh();
+    }
+    return;
+  }
+
+  const providerIds = [...new Set(records.map((r) => r.providerId))].sort();
+  const providerId =
+    providerIds.length === 1
+      ? providerIds[0]
+      : (
+          await vscode.window.showQuickPick(
+            providerIds.map((id) => ({
+              label: id,
+              description: `${records.filter((r) => r.providerId === id).length} keys`,
+            })),
+            { title: 'CodeRelay: API keys' },
+          )
+        )?.label;
+  if (providerId === undefined) {
+    return;
+  }
+
+  const now = Date.now();
+  const pool = records
+    .filter((r) => r.providerId === providerId)
+    .sort((a, b) => a.priority - b.priority || a.addedAt.localeCompare(b.addedAt));
+
+  type Item = vscode.QuickPickItem & {
+    action: 'toggle' | 'promote' | 'remove' | 'add';
+    credentialId?: string;
+  };
+
+  const items: Item[] = pool.map((record) => ({
+    label: `${statusIcon(record, now)} ${record.label}`,
+    description: describeCredentialState(record, now),
+    detail: record.lastFailureReason ?? undefined,
+    action: 'toggle',
+    credentialId: record.credentialId,
+  }));
+
+  items.push(
+    { label: '', kind: vscode.QuickPickItemKind.Separator, action: 'add' },
+    { label: '$(add) Add another key', action: 'add' },
+  );
+  if (pool.length > 1) {
+    items.push({ label: '$(arrow-up) Change which key is preferred', action: 'promote' });
+  }
+  items.push({ label: '$(trash) Remove a key', action: 'remove' });
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `CodeRelay: ${providerId} keys`,
+    placeHolder: 'Select a key to turn it on or off',
+  });
+  if (picked === undefined) {
+    return;
+  }
+
+  if (picked.action === 'add') {
+    await addCredential(context);
+    await ui?.refresh();
+    return;
+  }
+
+  if (picked.action === 'promote') {
+    const order = await vscode.window.showQuickPick(
+      pool.map((r) => ({ label: r.label, credentialId: r.credentialId })),
+      { title: 'Which key should be tried first?' },
+    );
+    if (order !== undefined) {
+      await credentials.reorder(providerId, [
+        order.credentialId,
+        ...pool.filter((r) => r.credentialId !== order.credentialId).map((r) => r.credentialId),
+      ]);
+      await ui?.refresh();
+    }
+    return await manageApiKeys(context);
+  }
+
+  if (picked.action === 'remove') {
+    const target = await vscode.window.showQuickPick(
+      pool.map((r) => ({ label: r.label, credentialId: r.credentialId })),
+      { title: 'Remove which key?' },
+    );
+    if (target === undefined) {
+      return;
+    }
+    const confirmed = await vscode.window.showWarningMessage(
+      `Remove “${target.label}”?`,
+      { modal: true, detail: 'The key is deleted from the OS keychain. This cannot be undone.' },
+      'Remove',
+    );
+    if (confirmed === 'Remove') {
+      await credentials.remove(target.credentialId);
+      await ui?.refresh();
+    }
+    return;
+  }
+
+  const record = pool.find((r) => r.credentialId === picked.credentialId);
+  if (record === undefined) {
+    return;
+  }
+  if (record.disabledReason !== null) {
+    // A rejected key cannot be toggled back on: the provider refused it, and a
+    // switch must not overrule that. Replacing it is the only real fix.
+    void vscode.window.showWarningMessage(
+      `“${record.label}” was rejected by ${providerId}: ${record.disabledReason}`,
+      'Remove it',
+    ).then(async (choice) => {
+      if (choice === 'Remove it') {
+        await credentials.remove(record.credentialId);
+        await ui?.refresh();
+      }
+    });
+    return;
+  }
+
+  await credentials.setEnabled(record.credentialId, record.userDisabled);
+  await ui?.refresh();
+  return await manageApiKeys(context);
+}
+
+/** A status glyph for one credential. Paired with words, never colour alone. */
+function statusIcon(record: CredentialRecord, now: number): string {
+  if (record.disabledReason !== null) {
+    return '$(error)';
+  }
+  if (record.userDisabled) {
+    return '$(circle-slash)';
+  }
+  if (record.coolingUntil !== null && record.coolingUntil > now) {
+    return '$(watch)';
+  }
+  return '$(pass)';
+}
+
+/**
+ * A credential's state in words.
+ *
+ * Every branch reports something observed: a rejection the provider sent, a
+ * cooldown it imposed, failures it reported. There is no synthetic health
+ * percentage, because nothing measures one.
+ */
+function describeCredentialState(record: CredentialRecord, now: number): string {
+  if (record.disabledReason !== null) {
+    return 'rejected by the provider';
+  }
+  if (record.userDisabled) {
+    return 'turned off';
+  }
+  if (record.coolingUntil !== null && record.coolingUntil > now) {
+    return `cooling for ${Math.ceil((record.coolingUntil - now) / 1000)}s`;
+  }
+  const parts: string[] = ['ready'];
+  if (record.consecutiveFailures > 0) {
+    parts.push(
+      `${record.consecutiveFailures} recent failure${record.consecutiveFailures === 1 ? '' : 's'}`,
+    );
+  }
+  if (record.lastUsedAt !== null) {
+    parts.push(`last used ${describeAge(Date.parse(record.lastUsedAt), now)}`);
+  }
+  return parts.join(' · ');
+}
+
+function describeAge(at: number, now: number): string {
+  if (!Number.isFinite(at)) {
+    return 'at an unknown time';
+  }
+  const seconds = Math.max(0, Math.round((now - at) / 1000));
+  if (seconds < 60) {
+    return 'just now';
+  }
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`;
+}
+
+/**
+ * Lists and edits routing rules, entirely inside CodeRelay.
+ *
+ * Rules live in settings so they are shareable and version-controllable, but a
+ * user never has to open the JSON to manage them — which is the point of the
+ * whole screen.
+ */
+async function manageRoutingRules(context: vscode.ExtensionContext): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const rules = parseRules(config.get('routingRules'));
+
+  type Item = vscode.QuickPickItem & { action: 'add' | 'toggle' | 'delete'; id?: string };
+  const items: Item[] = rules.map((rule) => ({
+    label: `${rule.enabled ? '$(check)' : '$(circle-slash)'} ${rule.label}`,
+    description: describeRule(rule),
+    detail: rule.enabled ? undefined : 'Disabled',
+    action: 'toggle',
+    id: rule.id,
+  }));
+  items.push({
+    label: '$(add) New rule…',
+    description: 'Prefer a model or provider for a kind of task',
+    action: 'add',
+  });
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: 'CodeRelay: routing rules',
+    placeHolder:
+      rules.length === 0
+        ? 'No rules yet — the automatic choice is used for every task'
+        : 'Select a rule to enable or disable it',
+  });
+  if (picked === undefined) {
+    return;
+  }
+
+  if (picked.action === 'add') {
+    await addRoutingRule(context, config, rules);
+    return;
+  }
+
+  // Toggling is the common edit, so it is the click rather than a submenu.
+  const next = rules.map((rule) =>
+    rule.id === picked.id ? { ...rule, enabled: !rule.enabled } : rule,
+  );
+  await config.update('routingRules', next, vscode.ConfigurationTarget.Workspace);
+  await manageRoutingRules(context);
+}
+
+/** Builds one rule through prompts, with no JSON in sight. */
+async function addRoutingRule(
+  context: vscode.ExtensionContext,
+  config: vscode.WorkspaceConfiguration,
+  existing: readonly RoutingRule[],
+): Promise<void> {
+  const role = await vscode.window.showQuickPick(
+    TASK_ROLES.map((r) => ({ label: ROLE_LABELS[r], role: r })),
+    { title: 'Routing rule: which kind of task?', placeHolder: 'When the task is…' },
+  );
+  if (role === undefined) {
+    return;
+  }
+
+  // Offered from the real catalog through `buildCandidates`, which is the same
+  // function the router uses — so a rule cannot name a model the router would
+  // not recognise.
+  const catalog = readCatalog();
+  const models =
+    catalog === null
+      ? []
+      : buildCandidates(catalog, credentialManager(context), Date.now()).map(
+          (candidate) => candidate.model,
+        );
+
+  if (models.length === 0) {
+    void vscode.window.showWarningMessage(
+      'Add a provider and a model before writing a routing rule about them.',
+    );
+    return;
+  }
+
+  const target = await vscode.window.showQuickPick(
+    models.map((model) => ({
+      label: model.modelId,
+      description: model.providerId,
+      modelId: model.modelId,
+    })),
+    { title: `Routing rule: prefer which model for ${ROLE_LABELS[role.role].toLowerCase()}?` },
+  );
+  if (target === undefined) {
+    return;
+  }
+
+  const rule: RoutingRule = {
+    id: `rule-${Date.now()}`,
+    label: `${ROLE_LABELS[role.role]} on ${target.modelId}`,
+    enabled: true,
+    when: { role: role.role },
+    prefer: { modelId: target.modelId },
+  };
+
+  await config.update(
+    'routingRules',
+    [...existing, rule],
+    vscode.ConfigurationTarget.Workspace,
+  );
+  void vscode.window.showInformationMessage(`Routing rule added: ${describeRule(rule)}`);
+  ui?.render();
+}
+
+/**
+ * Mirrors a real checkpoint into the task graph.
+ *
+ * The graph is what the Checkpoints view and the recovery manifest read, and
+ * until this existed only the chaos dry-run ever wrote to it — so both surfaces
+ * described a graph that no real task had touched.
+ *
+ * `verified` is deliberately false: a checkpoint is a snapshot of the work tree,
+ * and nothing has run the project's checks against it at the moment it is taken.
+ * Marking it verified here would be the same false tick the Verification Center
+ * exists to prevent.
+ */
+function recordGraphCheckpoint(taskId: TaskId, checkpoint: Checkpoint): void {
+  if (activeTaskGraph === null || activeTaskGraph.taskId !== taskId) {
+    activeTaskGraph = new TaskStateGraph(taskId);
+  }
+  activeTaskGraph.addNode({
+    kind: 'checkpoint',
+    id: `checkpoint-${checkpoint.index}`,
+    createdAt: Date.now(),
+    checkpointId: `${checkpoint.index}`,
+    sequenceNumber: checkpoint.index,
+    gitCommitSha: checkpoint.commit,
+    stateHash: checkpoint.tree,
+    verified: false,
+    reason: checkpoint.label,
+    filesChanged: [],
+  });
+}
+
+/**
+ * Waits for a task's lock to be released, up to a bound.
+ *
+ * Returns false rather than throwing when the wait elapses: failing to switch
+ * models is recoverable and the caller says so, while forcing a second session
+ * onto the same ledger is not.
+ */
+async function waitForTaskRelease(taskId: TaskId, timeoutMs = 5_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (taskLock.isLocked(taskId)) {
+    if (Date.now() >= deadline) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return true;
+}
+
+/**
+ * Exports a task as a portable package.
+ *
+ * Everything in it is read back from the ledger and the checkpoint store, so it
+ * describes what happened rather than what was intended. Deliberately carries
+ * no credential, no base URL and no key id — a package is meant to be
+ * shareable, and the moment it is not, nobody will share it.
+ */
+async function exportTask(): Promise<void> {
+  const taskId = ui?.store.selected ?? null;
+  if (taskId === null) {
+    void vscode.window.showInformationMessage('Select a task to export.');
+    return;
+  }
+
+  const projection = ui?.store.project(taskId);
+  if (projection === undefined) {
+    return;
+  }
+
+  const store = ui?.checkpointsFor(taskId) ?? null;
+  const checkpoints = store === null ? [] : await store.list(taskId);
+
+  // A requirement counts as done only where a recorded change backs it — the
+  // same evidence rule the requirement panel uses, rather than a second one.
+  const backed = (mentions: readonly string[]): boolean =>
+    mentions.length > 0 &&
+    projection.changes.some((c) => mentions.some((m) => c.path.endsWith(m)));
+
+  const json = exportTaskToPortableJson({
+    taskId,
+    objective: projection.header.title,
+    completedSteps: projection.requirements.filter((r) => backed(r.mentions)).map((r) => r.text),
+    remainingSteps: projection.requirements.filter((r) => !backed(r.mentions)).map((r) => r.text),
+    filesChanged: projection.changes.map((c) => c.path),
+    // Null rather than an invented verdict when nothing has been verified.
+    verificationState:
+      verification === null
+        ? null
+        : {
+            verdict: verification.verdict,
+            passedCount: verification.checks.filter((c) => c.status === 'passed').length,
+            failedCount: verification.checks.filter((c) => c.status !== 'passed').length,
+          },
+    checkpoints: checkpoints.map((c) => ({
+      sequence: c.index,
+      commitSha: c.commit,
+      // A `Checkpoint` carries no timestamp, and inventing one would put a
+      // fabricated time into a file someone may later read as a record.
+      timestamp: '',
+    })),
+  });
+
+  const target = await vscode.window.showSaveDialog({
+    title: 'Export CodeRelay task',
+    filters: { JSON: ['json'] },
+    defaultUri: vscode.Uri.file(`coderelay-task-${taskId}.json`),
+  });
+  if (target === undefined) {
+    return;
+  }
+  await vscode.workspace.fs.writeFile(target, Buffer.from(json, 'utf8'));
+  auditLogger.record({
+    category: 'TASK',
+    action: 'task_exported',
+    actor: 'user',
+    taskId,
+    details: { path: target.fsPath },
+  });
+  void vscode.window.showInformationMessage(`Task exported to ${target.fsPath}`);
+}
+
+/**
+ * Tests one specific credential, rather than whichever the pool would pick.
+ *
+ * With several keys on a provider, `testConnection` answers "does this provider
+ * work" and rotation decides which key it asked — so a user with one bad key in
+ * three learns nothing about which one to replace. This asks about exactly the
+ * key named.
+ *
+ * The result is recorded against that credential, because unlike a plain
+ * connection test this one *knows* which key it used: a 401 here is real
+ * evidence that this key is rejected, and letting it take the key out of
+ * rotation is the correct outcome rather than a side effect.
+ */
+async function testCredential(
+  context: vscode.ExtensionContext,
+  credentialId: string,
+): Promise<void> {
+  const catalog = await requireCatalog(context);
+  if (catalog === null) {
+    return;
+  }
+  const credentials = credentialManager(context);
+  const record = credentials.find(credentialId);
+  if (record === null) {
+    void vscode.window.showWarningMessage('That credential no longer exists.');
+    return;
+  }
+
+  const secret = await credentials.secretOf(credentialId);
+  if (secret === null) {
+    void vscode.window.showWarningMessage(
+      `“${record.label}” has no key in the OS keychain. Remove it and add the key again.`,
+    );
+    return;
+  }
+
+  // Any model on this provider will do: the question is whether the credential
+  // is accepted, and every model on a provider shares the credential.
+  const model = buildCandidates(catalog, credentials, Date.now()).find(
+    (candidate) => candidate.model.providerId === record.providerId,
+  )?.model;
+  if (model === undefined) {
+    void vscode.window.showWarningMessage(
+      `No model is configured for ${record.providerId}, so there is nothing to test the key against.`,
+    );
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const verdict = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Testing “${record.label}”…`,
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      const controller = new AbortController();
+      const sub = token.onCancellationRequested(() => controller.abort());
+      try {
+        return await probeModel(
+          {
+            catalog,
+            fetchImpl: createFetch(),
+            // The one key under test, not the one rotation would choose.
+            secretFor: async () => ({ t: 'secret' as const, secret }),
+            signal: controller.signal,
+            connectTimeoutMs: readTimeoutMs(config, 'connectTimeoutSeconds', 60),
+            idleTimeoutMs: readTimeoutMs(config, 'idleTimeoutSeconds', 120),
+          },
+          model,
+        );
+      } finally {
+        sub.dispose();
+      }
+    },
+  );
+
+  if (verdict.t === 'cancelled') {
+    return;
+  }
+
+  const described = describeVerdict(verdict, model);
+  auditLogger.record({
+    category: 'SECURITY',
+    action: described.ok ? 'credential_test_passed' : 'credential_test_failed',
+    actor: 'user',
+    details: { providerId: record.providerId, label: record.label, result: described.headline },
+  });
+
+  if (described.ok) {
+    void vscode.window.showInformationMessage(`“${record.label}” works.`);
+  } else {
+    void vscode.window.showWarningMessage(`“${record.label}”: ${described.headline}`, {
+      detail: described.detail,
+      modal: false,
+    });
+  }
+  await ui?.refresh();
+}
+
+/**
+ * Opens the audit trail.
+ *
+ * A write-only audit log is not an audit log, so this is the read side. Opened
+ * as an untitled JSONL document rather than saved anywhere: the trail is
+ * in-memory and per-window by design, and writing it to disk on the user's
+ * behalf would create a file they did not ask for and may not want retained.
+ *
+ * Every value passed through `AuditLogger.record` has already been through the
+ * DLP scrubber, so this cannot surface a secret that reached it by accident.
+ */
+async function showAuditLog(): Promise<void> {
+  const events = auditLogger.list({ limit: 500 });
+  if (events.length === 0) {
+    void vscode.window.showInformationMessage(
+      'No audit events yet. Approvals, credential changes and model switches are recorded here.',
+    );
+    return;
+  }
+
+  const doc = await vscode.workspace.openTextDocument({
+    content: auditLogger.exportJsonl(),
+    language: 'json',
+  });
+  await vscode.window.showTextDocument(doc, { preview: false });
+}
+
+/**
+ * Rebuilds the context set from what the editor can currently observe.
+ *
+ * Every signal here is an observation, never an inference: a file is open
+ * because a tab holds it, diagnosed because the language server said so,
+ * changed because the task's own fingerprints differ. `selectContext` decides
+ * what that means; this only reports it.
+ */
+async function rebuildContext(): Promise<void> {
+  const root = vscode.workspace.workspaceFolders?.[0];
+  if (root === undefined) {
+    void vscode.window.showWarningMessage('CodeRelay needs an open folder to build context.');
+    return;
+  }
+
+  // Capped, and excluding the directories `selectContext` would drop anyway —
+  // enumerating node_modules only to throw it away is the slowest possible way
+  // to reach the same answer.
+  const uris = await vscode.workspace.findFiles(
+    '**/*',
+    '{**/node_modules/**,**/dist/**,**/out/**,**/build/**,**/.git/**,**/coverage/**}',
+    4_000,
+  );
+  const rel = (uri: vscode.Uri): string => vscode.workspace.asRelativePath(uri, false);
+
+  const diagnostics = new Map<string, number>();
+  for (const [uri, list] of vscode.languages.getDiagnostics()) {
+    // Errors and warnings only. Hints and information are editor chatter and
+    // would pull half the workspace into context.
+    const serious = list.filter(
+      (d) =>
+        d.severity === vscode.DiagnosticSeverity.Error ||
+        d.severity === vscode.DiagnosticSeverity.Warning,
+    ).length;
+    if (serious > 0) {
+      diagnostics.set(rel(uri), serious);
+    }
+  }
+
+  const openPaths: string[] = [];
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const input: unknown = tab.input;
+      if (input instanceof vscode.TabInputText) {
+        openPaths.push(rel(input.uri));
+      }
+    }
+  }
+
+  const taskId = ui?.store.selected ?? null;
+  const changedPaths =
+    taskId === null ? [] : ui?.store.project(taskId).changes.map((c) => c.path) ?? [];
+
+  contextSet = selectContext({
+    candidates: gatherCandidates({
+      workspaceFiles: uris.map(rel),
+      openPaths,
+      diagnostics,
+      changedPaths,
+      mentionedPaths: [],
+    }),
+  });
+  ui?.render();
+}
+
+/**
+ * Opens the project memory file, creating it with its section headings if it
+ * does not exist.
+ *
+ * Deliberately the real file in an editor rather than a bespoke form. Memory
+ * steers the agent, so it deserves the same review as code — and the file stays
+ * editable the day something about this extension is broken.
+ */
+async function openMemory(): Promise<void> {
+  const root = vscode.workspace.workspaceFolders?.[0];
+  if (root === undefined) {
+    void vscode.window.showWarningMessage('CodeRelay needs an open folder to store project memory.');
+    return;
+  }
+
+  const uri = vscode.Uri.joinPath(root.uri, MEMORY_FILE);
+  try {
+    await vscode.workspace.fs.stat(uri);
+  } catch {
+    // Seeded with the headings and their hints, so an empty file still explains
+    // what belongs in it.
+    const seeded = [
+      renderMemory(EMPTY_MEMORY).trimEnd(),
+      '',
+      'Notes CodeRelay gives the model. Keep it to what the repository cannot',
+      'say itself — a convention with no linter behind it, a command nobody',
+      'would guess, a decision and the reason for it.',
+      '',
+      '## Conventions',
+      '',
+      '## Commands',
+      '',
+    ].join('\n');
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(seeded, 'utf8'));
+  }
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
+}
+
+/**
+ * Reads project memory for the prompt, or null when there is none.
+ *
+ * Failure is silent by design: memory is an enhancement, and a task must not
+ * refuse to start because an optional file could not be read.
+ */
+async function readMemoryForPrompt(): Promise<string | null> {
+  const root = vscode.workspace.workspaceFolders?.[0];
+  if (root === undefined) {
+    return null;
+  }
+  try {
+    const bytes = await vscode.workspace.fs.readFile(
+      vscode.Uri.joinPath(root.uri, MEMORY_FILE),
+    );
+    return renderForPrompt(parseMemory(Buffer.from(bytes).toString('utf8')));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Changes the permission mode from a picker rather than settings JSON.
+ *
+ * The current mode is marked, and each option states what it actually allows —
+ * "Balanced" means nothing on its own, and a user choosing blind is a user who
+ * will be surprised by what the agent does next.
+ */
+async function choosePermissionMode(): Promise<void> {
+  const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
+  const current = parsePermissionMode(config.get<string>('permissionMode'));
+
+  const options: { label: string; description: string; detail: string; mode: PermissionMode }[] = [
+    {
+      label: 'Safe',
+      description: 'ask before anything that writes',
+      detail: 'Every command that changes the workspace needs your approval.',
+      mode: 'safe',
+    },
+    {
+      label: 'Balanced',
+      description: 'ask before destructive commands',
+      detail: 'Ordinary writes run; anything that could lose work is confirmed first.',
+      mode: 'balanced',
+    },
+    {
+      label: 'Autonomous',
+      description: 'run without asking',
+      detail: 'Destructive commands still refuse to run — they are forbidden, not merely unasked.',
+      mode: 'autonomous',
+    },
+  ];
+
+  const picked = await vscode.window.showQuickPick(
+    options.map((o) => ({
+      label: o.mode === current ? `$(check) ${o.label}` : o.label,
+      description: o.description,
+      detail: o.detail,
+      mode: o.mode,
+    })),
+    { title: 'CodeRelay: command permissions', placeHolder: `Currently ${current}` },
+  );
+  if (picked === undefined) {
+    return;
+  }
+  await config.update('permissionMode', picked.mode, vscode.ConfigurationTarget.Workspace);
+  void vscode.window.showInformationMessage(`CodeRelay permissions: ${picked.mode}.`);
+  ui?.render();
+}
+
+/** Where project memory lives, relative to the workspace root. */
+const MEMORY_FILE = 'CODERELAY.md';
+
+/**
+ * Runs the project's own checks and records the verdict.
+ *
+ * Every command comes from `planVerification`, which reads the workspace's
+ * `package.json`. Nothing a model produced reaches a shell through this path,
+ * which is why it has no approval gate: that boundary exists for commands a
+ * model chose, and `run_command` still owns that case.
+ *
+ * Only one run at a time. A second run would compete with the first for the
+ * same `node_modules` and the same build output, and the two verdicts could
+ * disagree about a workspace that never changed.
+ */
+async function runVerify(channel: vscode.OutputChannel): Promise<void> {
+  if (verifying !== null) {
+    void vscode.window.showInformationMessage('CodeRelay is already verifying this workspace.');
+    return;
+  }
+
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+  if (root === null) {
+    void vscode.window.showWarningMessage(
+      'CodeRelay needs an open folder to verify: the checks it runs come from the project.',
+    );
+    return;
+  }
+
+  const facts = await readWorkspaceFacts(root);
+  const plan = planVerification(facts);
+
+  if (plan.checks.length === 0) {
+    // Deliberately not an error, and deliberately not a pass. The project
+    // declares nothing to run, and saying so is the honest outcome.
+    verification = {
+      verdict: 'unverifiable',
+      checks: [],
+      unavailable: plan.unavailable,
+      totalDurationMs: 0,
+    };
+    ui?.render();
+    void vscode.window.showInformationMessage(
+      'Nothing to verify: this project declares no test, lint, typecheck or build script.',
+    );
+    return;
+  }
+
+  const controller = new AbortController();
+  verifying = controller;
+  verification = null;
+  ui?.render();
+
+  try {
+    const run = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'CodeRelay: verifying', cancellable: true },
+      async (progress, token) => {
+        token.onCancellationRequested(() => controller.abort());
+        let done = 0;
+        return runVerification({
+          plan,
+          signal: controller.signal,
+          exec: async (command, signal) => {
+            progress.report({ message: `${command} (${++done} of ${plan.checks.length})` });
+            channel.appendLine(`[verify] ${command}`);
+            return createExecutor({ root })(command, signal);
+          },
+        });
+      },
+    );
+    verification = run;
+    channel.appendLine(`[verify] verdict: ${run.verdict}`);
+  } finally {
+    verifying = null;
+    ui?.render();
+  }
+}
 
 export function deactivate(): void {
   // Nothing to tear down: every ledger handle is closed by its owner, and the

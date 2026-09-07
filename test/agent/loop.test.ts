@@ -31,6 +31,7 @@ import { test } from 'node:test';
 import { AgentLoop, type LoopEvent, type LoopResult, type TurnPrompt } from '../../src/agent/loop.js';
 import type { LedgerEntry } from '../../src/continuity/entries.js';
 import { ExecutionLedger } from '../../src/continuity/ledger.js';
+import { HealthTracker, grade } from '../../src/policy/health.js';
 import {
   CredentialManager,
   type MetadataStore,
@@ -49,6 +50,7 @@ import type {
 } from '../../src/core/types.js';
 
 import type { Candidate, Requirements } from '../../src/policy/route.js';
+import type { VerificationRun } from '../../src/verify/run.js';
 import type {
   BuiltRequest,
   ProviderAdapter,
@@ -218,6 +220,11 @@ interface Options {
   readonly providers?: readonly string[];
   readonly keys?: readonly { readonly providerId: string; readonly secret: string }[];
   readonly progressEveryChars?: number;
+  /** Drives the injected clock, so latency assertions are exact. */
+  readonly clock?: { now: () => number };
+  /** Lets a test cancel the task the way the user's stop button does. */
+  readonly signal?: AbortSignal;
+  readonly verifier?: () => Promise<VerificationRun>;
 }
 
 interface Harness {
@@ -229,6 +236,7 @@ interface Harness {
   readonly requests: { url: string; init: HttpRequestInitLike }[];
   readonly observed: LoopEvent[];
   readonly delays: number[];
+  readonly health: HealthTracker;
   adapter(providerId: string): FakeAdapter;
   entries(): Promise<LedgerEntry[]>;
   dispose(): Promise<void>;
@@ -291,6 +299,8 @@ async function harness(opts: Options): Promise<Harness> {
   const prompts: TurnPrompt[] = [];
   const observed: LoopEvent[] = [];
   const delays: number[] = [];
+  const clock = opts.clock ?? { now: () => 0 };
+  const health = new HealthTracker({ now: clock.now });
 
   const candidates = async (): Promise<readonly Candidate[]> =>
     models.map((model) => ({
@@ -335,6 +345,10 @@ async function harness(opts: Options): Promise<Harness> {
       delays.push(ms);
     },
     observer: (event) => observed.push(event),
+    now: clock.now,
+    health,
+    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
+    ...(opts.verifier === undefined ? {} : { verifier: opts.verifier }),
   });
 
   return {
@@ -346,6 +360,7 @@ async function harness(opts: Options): Promise<Harness> {
     requests,
     observed,
     delays,
+    health,
     adapter(providerId) {
       const found = adapters.get(providerId);
       if (found === undefined) {
@@ -889,3 +904,223 @@ test('every routing decision is offered to the observer and recorded', async () 
     await h.dispose();
   }
 });
+
+// --- endpoint health -------------------------------------------------------
+// Health only ever reorders or ejects candidates; it never invents one. These
+// tests check the loop feeds it truthfully, because a router acting on wrong
+// evidence is worse than one acting on none.
+
+test('a completed turn records a success with a measured latency', async () => {
+  // The clock advances on each read, so the first token lands 5ms after start.
+  let t = 1_000;
+  const h = await harness({
+    script: [events(text('all done'), done('stop'))],
+    clock: {
+      now: () => {
+        const value = t;
+        t += 5;
+        return value;
+      },
+    },
+  });
+
+  try {
+    const result = await h.loop.run('say something');
+    assert.equal(result.kind, 'DONE');
+
+    const recorded = h.health.get({ model: MODEL_A, credentialId: 'cred-1' });
+    assert.equal(recorded.totalSuccesses, 1);
+    assert.equal(recorded.totalFailures, 0);
+    assert.ok(
+      recorded.latencyMs !== null && recorded.latencyMs > 0,
+      'a latency of zero would be a measurement nobody took',
+    );
+    assert.equal(grade(recorded, t), 'healthy');
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('repeated provider failures trip the breaker for that endpoint', async () => {
+  const h = await harness({
+    // Three 503s against one model with one key exhausts its per-model budget.
+    script: [status(503), status(503), status(503)],
+    models: [MODEL_A],
+  });
+
+  try {
+    await h.loop.run('try something');
+
+    const recorded = h.health.get({ model: MODEL_A, credentialId: 'cred-1' });
+    assert.equal(recorded.totalFailures, 3);
+    assert.equal(
+      recorded.breaker.kind,
+      'open',
+      'an endpoint that failed every attempt must stop being offered to the next task',
+    );
+    assert.equal(h.health.admit({ model: MODEL_A, credentialId: 'cred-1' }).ok, false);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('a rejected key is recorded but never trips the breaker', async () => {
+  const h = await harness({
+    script: [status(401)],
+    models: [MODEL_A],
+  });
+
+  try {
+    await h.loop.run('try something');
+
+    const recorded = h.health.get({ model: MODEL_A, credentialId: 'cred-1' });
+    assert.equal(recorded.lastErrorClass, 'AUTH');
+    assert.equal(
+      h.health.admit({ model: MODEL_A, credentialId: 'cred-1' }).ok,
+      true,
+      'a bad key is a setup problem; ejecting the endpoint would hide it',
+    );
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('a truncated turn is recorded as a failure, not a success', async () => {
+  const h = await harness({
+    // A stream that stops without a terminal event, then a clean turn.
+    script: [events(text('half a thou')), events(text('done'), done('stop'))],
+    models: [MODEL_A],
+  });
+
+  try {
+    await h.loop.run('write something');
+
+    const recorded = h.health.get({ model: MODEL_A, credentialId: 'cred-1' });
+    assert.equal(
+      recorded.totalFailures,
+      1,
+      'a stream that died mid-turn did not deliver a usable turn',
+    );
+    assert.equal(recorded.totalSuccesses, 1, 'and the retry that did complete counts as one');
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('health records the endpoint that failed, not the one the task moved to', async () => {
+  const h = await harness({
+    script: [status(500), status(500), status(500), events(text('ok'), done('stop'))],
+    models: [MODEL_A, MODEL_B],
+    keys: [
+      { providerId: MODEL_A.providerId, secret: 'k1' },
+      { providerId: MODEL_B.providerId, secret: 'k2' },
+    ],
+  });
+
+  try {
+    await h.loop.run('do the thing');
+
+    const failed = h.health.get({ model: MODEL_A, credentialId: 'cred-1' });
+    const succeeded = h.health.get({ model: MODEL_B, credentialId: 'cred-2' });
+
+    assert.equal(failed.totalFailures, 3);
+    assert.equal(failed.totalSuccesses, 0);
+    assert.equal(succeeded.totalSuccesses, 1);
+    assert.equal(succeeded.totalFailures, 0);
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('a cancelled task records no outcome at all', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const h = await harness({
+    script: [events(text('...'), done('stop'))],
+    signal: controller.signal,
+  });
+
+  try {
+    const result = await h.loop.run('start then stop');
+    assert.equal(result.kind, 'CANCELLED');
+
+    const recorded = h.health.get({ model: MODEL_A, credentialId: 'cred-1' });
+    assert.equal(recorded.totalSuccesses, 0);
+    assert.equal(recorded.totalFailures, 0);
+    assert.equal(
+      recorded.successRate,
+      null,
+      'the user pressing stop is not evidence about the provider',
+    );
+  } finally {
+    await h.dispose();
+  }
+});
+
+// --- evidence-gated completion ---------------------------------------------
+
+test('when verification fails, the model claiming done is rejected with corrective feedback', async () => {
+  let verificationCalls = 0;
+  const failingVerification: VerificationRun = {
+    verdict: 'failed',
+    checks: [
+      {
+        id: 'typecheck',
+        label: 'Types',
+        command: 'tsc --noEmit',
+        status: 'failed',
+        durationMs: 120,
+        summary: 'found 2 errors',
+        output: 'src/auth.ts(12,5): error TS2322: Type string is not assignable to type number.',
+      },
+    ],
+    unavailable: [],
+    totalDurationMs: 120,
+  };
+
+  const passingVerification: VerificationRun = {
+    verdict: 'verified',
+    checks: [
+      {
+        id: 'typecheck',
+        label: 'Types',
+        command: 'tsc --noEmit',
+        status: 'passed',
+        durationMs: 100,
+        summary: 'typecheck passed',
+        output: '',
+      },
+    ],
+    unavailable: [],
+    totalDurationMs: 100,
+  };
+
+  const h = await harness({
+    script: [
+      // Turn 1: model claims done
+      events(text('I have finished the auth implementation.'), done('stop')),
+      // Turn 2: model fixes the type error and claims done again
+      events(text('Fixed the type error.'), done('stop')),
+    ],
+    verifier: async () => {
+      verificationCalls += 1;
+      return verificationCalls === 1 ? failingVerification : passingVerification;
+    },
+  });
+
+  try {
+    const result = await h.loop.run('implement auth');
+    assert.equal(result.kind, 'DONE');
+    assert.equal(verificationCalls, 2);
+
+    // Assert that the second prompt contains the evidence gate feedback
+    const secondPrompt = h.prompts[1]!;
+    const note = secondPrompt.transcript.find((t) => t.role === 'note');
+    assert.ok(note !== undefined);
+    assert.match(note!.text, /CodeRelay Evidence Gate/);
+    assert.match(note!.text, /TS2322/);
+  } finally {
+    await h.dispose();
+  }
+});
+

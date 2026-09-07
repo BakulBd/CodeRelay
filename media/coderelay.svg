@@ -1,3 +1,20 @@
+<!--
+  The CodeRelay mark: < • >
+
+  Two code brackets holding a payload between them. The brackets are {code};
+  the gap between them is the handoff; the mark in the middle is the task,
+  which is the thing that persists while whatever is holding it changes.
+
+  Constraints this shape is built to survive:
+   - 16px in the Activity Bar. Three elements, all at full stroke weight, no
+     detail smaller than the stroke itself.
+   - Monochrome. VS Code tints Activity Bar icons, so this is currentColor
+     throughout with no fill and no second tone to lose.
+   - Not a lightning bolt, a spark, a hexagon or a gradient orb — the marks
+     every other AI tool already uses.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+  <path d="M8.5 5.5 3.5 12l5 6.5"/>
+  <path d="M15.5 5.5 20.5 12l-5 6.5"/>
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
 </svg>

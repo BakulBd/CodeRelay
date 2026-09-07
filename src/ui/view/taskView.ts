@@ -20,11 +20,29 @@ import {
   type WebviewViewResolveContext,
 } from 'vscode';
 import type { ModelRef } from '../../core/types.js';
-import { present, type BlockedReason, type SessionSummary, type TaskViewModel } from '../webview/present.js';
+import {
+  present,
+  type BlockedReason,
+  type SessionSummary,
+  type TaskViewModel,
+  type CandidateModel,
+  type ConfiguredProviderItem,
+  type EndpointHealthItem,
+} from '../webview/present.js';
 import { parseInbound, type Inbound, type TaskMode } from '../webview/protocol.js';
 import type { SetupViewModel } from '../setup/present.js';
 import { renderShell } from '../webview/shell.js';
 import type { TaskStore } from '../state/store.js';
+import type { VerificationRun } from '../../verify/run.js';
+import type { ContextSet } from '../../context/select.js';
+import type { Selection } from '../../policy/select.js';
+import type { NotificationEvent } from '../state/notifications.js';
+import type { CodeRelaySettingsModel } from '../state/settings.js';
+import type { McpServerConfig } from '../../tools/mcp.js';
+import type { ToolPolicyRule } from '../../tools/policy.js';
+import type { ContinuityScoreResult } from '../../continuity/metric.js';
+import type { ScenarioBenchmarkResult } from '../../bench/recovery-bench.js';
+import type { ChaosExperimentReport } from '../../bench/chaos.js';
 
 export const TASK_VIEW_ID = 'coderelay.taskView';
 
@@ -43,6 +61,27 @@ export interface TaskViewDeps {
   readonly soundEnabled?: () => boolean;
   readonly sessions?: () => readonly SessionSummary[];
   readonly contextWindowLimit?: () => number | null;
+  /** The newest verification run for this workspace, or null when none. */
+  readonly verification?: () => VerificationRun | null;
+  /** True while checks are running. */
+  readonly verifying?: () => boolean;
+  /** The context set built for the active task. */
+  readonly context?: () => ContextSet | null;
+  /** Why CodeRelay chose the running model, or null when the user pinned it. */
+  readonly selection?: () => Selection | null;
+  readonly notifications?: () => readonly NotificationEvent[];
+  readonly settings?: () => CodeRelaySettingsModel;
+  readonly workspaceInfo?: () => { name: string; path: string; hasFolders: boolean };
+  readonly activeNavTab?: () => string;
+  readonly mcpServers?: () => readonly McpServerConfig[];
+  readonly toolPolicies?: () => readonly ToolPolicyRule[];
+  readonly candidates?: () => readonly CandidateModel[];
+  readonly configuredProviders?: () => readonly ConfiguredProviderItem[];
+  readonly health?: () => readonly EndpointHealthItem[];
+  readonly continuityScore?: () => ContinuityScoreResult | null;
+  readonly checkpointsList?: () => readonly { id: string; sequenceNumber: number; verified: boolean; reason: string; commitSha?: string; filesChanged: readonly string[] }[];
+  readonly benchmarkResults?: () => ScenarioBenchmarkResult | null;
+  readonly chaosReport?: () => ChaosExperimentReport | null;
 }
 
 export class TaskViewProvider implements WebviewViewProvider, Disposable {
@@ -127,6 +166,20 @@ export class TaskViewProvider implements WebviewViewProvider, Disposable {
     }
   }
 
+  /** Sends an attached context reference chip (e.g. @file.ts) to the composer. */
+  attachContext(chip: string): void {
+    if (this.view !== null && this.view.visible) {
+      void this.view.webview.postMessage({ kind: 'attachContext', chip });
+    }
+  }
+
+  /** Sends an interactive approval request to the panel. */
+  requestApproval(request: { requestId: string; command?: string; reason?: string; risk?: string }): void {
+    if (this.view !== null && this.view.visible) {
+      void this.view.webview.postMessage({ kind: 'approvalRequest', ...request });
+    }
+  }
+
   /** Sends the current state to the client. */
   render(): void {
     const view = this.view;
@@ -161,6 +214,23 @@ export class TaskViewProvider implements WebviewViewProvider, Disposable {
       soundEnabled: this.deps.soundEnabled ? this.deps.soundEnabled() : true,
       sessions: this.deps.sessions ? this.deps.sessions() : [],
       contextWindowLimit: this.deps.contextWindowLimit ? this.deps.contextWindowLimit() : null,
+      verification: this.deps.verification ? this.deps.verification() : null,
+      verifying: this.deps.verifying ? this.deps.verifying() : false,
+      context: this.deps.context ? this.deps.context() : null,
+      selection: this.deps.selection ? this.deps.selection() : null,
+      notifications: this.deps.notifications ? this.deps.notifications() : [],
+      settings: this.deps.settings ? this.deps.settings() : undefined,
+      workspaceInfo: this.deps.workspaceInfo ? this.deps.workspaceInfo() : undefined,
+      activeNavTab: this.deps.activeNavTab ? this.deps.activeNavTab() : undefined,
+      mcpServers: this.deps.mcpServers ? this.deps.mcpServers() : [],
+      toolPolicies: this.deps.toolPolicies ? this.deps.toolPolicies() : [],
+      candidates: this.deps.candidates ? this.deps.candidates() : [],
+      configuredProviders: this.deps.configuredProviders ? this.deps.configuredProviders() : [],
+      health: this.deps.health ? this.deps.health() : [],
+      continuityScore: this.deps.continuityScore ? this.deps.continuityScore() : null,
+      checkpointsList: this.deps.checkpointsList ? this.deps.checkpointsList() : [],
+      benchmarkResults: this.deps.benchmarkResults ? this.deps.benchmarkResults() : null,
+      chaosReport: this.deps.chaosReport ? this.deps.chaosReport() : null,
     });
   }
 

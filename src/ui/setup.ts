@@ -69,47 +69,6 @@ function target(): ConfigurationTarget {
     : ConfigurationTarget.Workspace;
 }
 
-/**
- * Collects a key for one endpoint.
- *
- * `password: true` keeps it out of the input history and off screen. It goes
- * straight into `CredentialManager.add` and is never held in a variable that
- * outlives this call, never logged, and never interpolated into a message.
- */
-export async function promptForKey(
-  credentials: CredentialManager,
-  config: ProviderConfig,
-  preset?: ProviderPreset,
-): Promise<boolean> {
-  const secret = await window.showInputBox({
-    title: `CodeRelay: API key for ${config.id}`,
-    prompt:
-      'Stored in the OS keychain through VS Code SecretStorage. Never written to your ' +
-      'settings, your logs, or the execution timeline.',
-    placeHolder: preset?.key === 'anthropic' ? 'sk-ant-…' : 'sk-…',
-    password: true,
-    ignoreFocusOut: true,
-  });
-  if (secret === undefined || secret.trim() === '') {
-    void window.showWarningMessage(
-      `CodeRelay saved "${config.id}" but has no key for it yet. Run "CodeRelay: Add API Key" ` +
-        'when you have one.',
-    );
-    return false;
-  }
-
-  try {
-    await credentials.add(config.id, 'default', secret);
-    return true;
-  } catch (err: unknown) {
-    // The only throw from `add` is its empty-value guard, which quotes nothing,
-    // so this message cannot contain key material.
-    void window.showErrorMessage(
-      `CodeRelay could not store that key: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-}
 
 /**
  * Declares one model against an endpoint.
@@ -279,11 +238,88 @@ export async function addModel(
       if (choice === 'Start a task') {
         await window.showInformationMessage('Describe what you want done in the CodeRelay view.');
       } else if (choice === 'Add cost info') {
-        await openModelSettings();
+        await addCostInfo(chosenProvider, model.model);
       }
     });
 
   return true;
+}
+
+/**
+ * Asks for a model's prices and writes them, without opening settings JSON.
+ *
+ * This replaced the last raw-settings escape in a live path. Prices are
+ * genuinely optional — they affect tie-breaking and the cost display, nothing
+ * else — so the flow can be abandoned at either question and simply leaves the
+ * model unpriced, which the rest of the system already reports honestly as
+ * "no cost declared" rather than as free.
+ *
+ * Decimals are preserved: `askNumber` floors, which is right for a context
+ * window and wrong for a price of $0.25 per million tokens.
+ */
+async function addCostInfo(providerId: string, modelId: string): Promise<void> {
+  const input = await askPrice({
+    title: `Input price for ${modelId}`,
+    prompt: 'US dollars per million input tokens. Leave empty to skip.',
+  });
+  if (input === null) {
+    return;
+  }
+  const output = await askPrice({
+    title: `Output price for ${modelId}`,
+    prompt: 'US dollars per million output tokens.',
+  });
+  if (output === null) {
+    return;
+  }
+
+  // `rawModels` returns `unknown[]` on purpose: settings are hand-editable and
+  // nothing guarantees their shape. Narrowed here rather than trusted.
+  const models = rawModels();
+  const index = models.findIndex((entry) => {
+    if (typeof entry !== 'object' || entry === null) {
+      return false;
+    }
+    const record = entry as { provider?: unknown; model?: unknown };
+    return record.provider === providerId && record.model === modelId;
+  });
+  if (index === -1) {
+    return;
+  }
+  const existing = models[index];
+  if (typeof existing !== 'object' || existing === null) {
+    return;
+  }
+  const updated = [...models];
+  updated[index] = { ...(existing as Record<string, unknown>), costPerMTokIn: input, costPerMTokOut: output };
+
+  await workspace.getConfiguration(CONFIG_SECTION).update('models', updated, target());
+  void window.showInformationMessage(
+    `CodeRelay will report cost for ${modelId} at $${input} in and $${output} out per million tokens.`,
+  );
+}
+
+/** Like `askNumber`, but keeps decimals — a price is rarely a whole dollar. */
+async function askPrice(options: { title: string; prompt: string }): Promise<number | null> {
+  const entered = await window.showInputBox({
+    title: `CodeRelay: ${options.title}`,
+    prompt: options.prompt,
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      if (value.trim() === '') {
+        return null;
+      }
+      const n = Number(value.trim());
+      if (!Number.isFinite(n) || n < 0) {
+        return 'Enter a price in dollars, or leave it empty to skip.';
+      }
+      return null;
+    },
+  });
+  if (entered === undefined || entered.trim() === '') {
+    return null;
+  }
+  return Number(entered.trim());
 }
 
 async function askNumber(options: {
@@ -382,14 +418,4 @@ async function offerDiscoveredModels(
   return picked.id === MANUAL ? null : (picked.id as string);
 }
 
-export async function openModelSettings(): Promise<void> {
-  const { commands } = await import('vscode');
-  await commands.executeCommand('workbench.action.openSettings', `${CONFIG_SECTION}.models`);
-}
 
-/** Opens the vendor's own model list, which is the page that is actually current. */
-export async function openModelDocs(preset: ProviderPreset): Promise<void> {
-  if (preset.modelsUrl !== undefined) {
-    await env.openExternal(Uri.parse(preset.modelsUrl));
-  }
-}

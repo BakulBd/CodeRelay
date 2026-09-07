@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   describeFailure,
+  describeRelayInterruption,
   explainErrorClass,
   present,
   presentRow,
@@ -583,3 +584,56 @@ test('present supports agent modes, context window percentage, sound, and sessio
   assert.equal(model.header?.contextWindowLimit, 100_000);
   assert.match(model.promptPlaceholder, /architectural problem/i);
 });
+
+test('present generates RelayInterruptionModel with progress and verified evidence', () => {
+  const projection = projectTask(
+    history(
+      { type: 'TASK_STARTED', objective: 'Add JWT auth' },
+      {
+        type: 'PLAN_PROPOSED',
+        title: 'Auth Plan',
+        planMarkdown: '- [x] Sign JWT\n- [ ] Refresh token\n- [ ] Tests',
+      },
+      {
+        type: 'TOOL_REQUESTED',
+        toolCallId: callId('c1'),
+        toolName: 'write_file',
+        args: { path: 'src/auth.ts' },
+        sideEffectKey: KEY,
+        safety: 'idempotent',
+      },
+      {
+        type: 'TOOL_COMPLETED',
+        toolCallId: callId('c1'),
+        sideEffectKey: KEY,
+        ok: true,
+        resultSummary: 'wrote auth.ts',
+        postState: [fp('src/auth.ts', 'abc')],
+      },
+      {
+        type: 'FAILED',
+        errorClass: 'NETWORK',
+        message: 'Connection timeout after 30s',
+        hadStreamedTokens: true,
+      },
+    ),
+  );
+
+  const model = present({
+    taskId: 't-102',
+    projection,
+    live: false,
+    blocked: null,
+    selectedModel: { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' },
+  });
+
+  assert.ok(model.relayInterruption !== null);
+  assert.equal(model.relayInterruption?.interruptedModel.providerId, 'anthropic');
+  assert.ok(model.relayInterruption?.progressPercent > 0);
+  assert.ok(model.relayInterruption?.verifiedFacts.some((f) => f.label.includes('Checkpoint')));
+  assert.ok(model.relayInterruption?.verifiedFacts.some((f) => f.label.includes('verified on disk')));
+  assert.equal(model.relayInterruption?.recommendedModel.providerId, 'google');
+  assert.match(model.relayInterruption?.recommendationReason, /1M\+ context capacity/);
+  assert.ok(model.relayInterruption?.pipelineSteps.length > 4);
+});
+

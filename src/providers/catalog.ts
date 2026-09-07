@@ -476,5 +476,5 @@ export class ModelCatalog {
 }
 
 export function refKey(ref: ModelRef): string {
-  return `${ref.providerId} ${ref.modelId}`;
+  return `${ref.providerId}\0${ref.modelId}`;
 }

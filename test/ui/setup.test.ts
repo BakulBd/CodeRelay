@@ -31,6 +31,7 @@ import {
   toggleModel,
 } from '../../src/ui/setup/wizard.js';
 import { presentSetup } from '../../src/ui/setup/present.js';
+import { SetupController } from '../../src/ui/setup/controller.js';
 
 const openai = () => chooseProvider(initialState(), 'openai', []);
 
@@ -317,9 +318,57 @@ test('a failure is reported without clearing the user’s work', () => {
 test('the provider list offers every configured preset, flagged usefully', () => {
   const cards = presentSetup(initialState()).providers;
   const keys = cards.map((c) => c.key);
-  for (const expected of ['anthropic', 'openai', 'gemini', 'nvidia', 'custom']) {
+  for (const expected of ['anthropic', 'openai', 'gemini', 'nvidia', 'deepseek', 'groq', 'mistral', 'together', 'cerebras', 'fireworks', 'custom']) {
     assert.ok(keys.includes(expected), `missing ${expected}`);
   }
   assert.equal(cards.find((c) => c.key === 'custom')?.needsUrl, true);
   assert.equal(cards.find((c) => c.key === 'ollama')?.local, true);
+});
+
+test('SetupController opens cleanly from openAdd, openManage, and edit', () => {
+  let changed = 0;
+  const mockConfig: Record<string, unknown> = {
+    providers: [],
+    models: [],
+  };
+  const controller = new SetupController({
+    credentials: {
+      list: () => [],
+      // The controller reads the pool on every render to draw the key rows.
+      records: () => [],
+      next: async () => ({ t: 'none', reason: 'none' }),
+      add: async () => ({ credentialId: 'c1' }),
+      remove: async () => {},
+      update: async () => {},
+      setEnabled: async () => {},
+      reorder: async () => {},
+    } as unknown as any,
+    config: () => ({
+      get: (key: string) => mockConfig[key],
+      update: async (key: string, val: unknown) => { mockConfig[key] = val; },
+    } as unknown as any),
+    onChange: () => { changed++; },
+    onSaved: async () => {},
+  });
+
+  assert.equal(controller.isOpen, false);
+  controller.openAdd();
+  assert.equal(controller.isOpen, true, 'openAdd must set isOpen to true');
+  assert.equal(changed, 1);
+  const addModel = controller.model();
+  assert.equal(addModel.kind, 'setup');
+  assert.equal(addModel.step, 'provider');
+
+  controller.choose('anthropic');
+  assert.equal(controller.isOpen, true);
+  const connectModel = controller.model();
+  assert.equal(connectModel.step, 'connect');
+  assert.equal(connectModel.fields.some((f) => f.id === 'apiKey'), true);
+
+  controller.close();
+  assert.equal(controller.isOpen, false);
+
+  controller.openManage();
+  assert.equal(controller.isOpen, true, 'openManage must set isOpen to true');
+  assert.equal(controller.model().step, 'manage');
 });

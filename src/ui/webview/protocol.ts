@@ -86,6 +86,11 @@ export type Inbound =
   | { readonly kind: 'approvePlan' }
   | { readonly kind: 'rejectPlan' }
   | { readonly kind: 'regeneratePlan' }
+  | { readonly kind: 'relay' }
+  | { readonly kind: 'rebuildContext' }
+  | { readonly kind: 'clearContext' }
+  | { readonly kind: 'verify' }
+  | { readonly kind: 'stopVerify' }
   | { readonly kind: 'refreshViews' }
   | { readonly kind: 'showDiagnostics' }
   /** Opens guided setup inside the panel. Never a settings file, never a quick pick. */
@@ -114,10 +119,34 @@ export type Inbound =
   | { readonly kind: 'setupReorder'; readonly modelId: string; readonly direction: -1 | 1 }
   | { readonly kind: 'setupRefreshModels' }
   | { readonly kind: 'addCredential' }
+  | { readonly kind: 'keyToggle'; readonly credentialId: string; readonly enabled: boolean }
+  | { readonly kind: 'keyPromote'; readonly credentialId: string }
+  | { readonly kind: 'keyTest'; readonly credentialId: string }
+  | { readonly kind: 'keyRemove'; readonly credentialId: string }
 
   | { readonly kind: 'resolve' }
   | { readonly kind: 'attachFile' }
-  | { readonly kind: 'openInEditor' };
+  | { readonly kind: 'openInEditor' }
+  | { readonly kind: 'workspaceActions' }
+  | { readonly kind: 'openNotifications' }
+  | { readonly kind: 'dismissNotification'; readonly id?: string }
+  | { readonly kind: 'dismissAllNotifications' }
+  | { readonly kind: 'openOverflowMenu' }
+  | { readonly kind: 'focusActiveTask' }
+  | { readonly kind: 'switchNavTab'; readonly tab: string }
+  | { readonly kind: 'openContextPicker' }
+  | { readonly kind: 'applyContext'; readonly files: readonly string[] }
+  | { readonly kind: 'saveSetting'; readonly category: string; readonly key: string; readonly value: unknown }
+  | { readonly kind: 'runPlayground'; readonly providerId: string; readonly modelId: string; readonly testType: string }
+  | { readonly kind: 'selectModel'; readonly providerId: string; readonly modelId: string }
+  | { readonly kind: 'resolveApproval'; readonly requestId: string; readonly decision: 'allow_once' | 'allow_for_task' | 'deny' }
+  | { readonly kind: 'relayTask'; readonly targetModel?: ModelRef }
+  | { readonly kind: 'rollbackCheckpoint'; readonly checkpointId: string }
+  | { readonly kind: 'runRecoveryBenchmark'; readonly scenarioId?: string }
+  | { readonly kind: 'injectChaos'; readonly failureType: string; readonly targetStep?: number }
+  | { readonly kind: 'exportTaskGraph' }
+  | { readonly kind: 'importTaskGraph'; readonly graphJson: string }
+  | { readonly kind: 'runMultiModelReview' };
 
 /** The editable fields of the connect step. */
 export type SetupField = 'providerId' | 'baseUrl' | 'apiVersion' | 'apiKey';
@@ -202,6 +231,11 @@ export function parseInbound(raw: unknown): Inbound | null {
     case 'approvePlan':
     case 'rejectPlan':
     case 'regeneratePlan':
+    case 'relay':
+    case 'rebuildContext':
+    case 'clearContext':
+    case 'verify':
+    case 'stopVerify':
     case 'refreshViews':
     case 'showDiagnostics':
     case 'setUp':
@@ -218,8 +252,87 @@ export function parseInbound(raw: unknown): Inbound | null {
     case 'resolve':
     case 'attachFile':
     case 'openInEditor':
+    case 'workspaceActions':
+    case 'openNotifications':
+    case 'dismissAllNotifications':
+    case 'openOverflowMenu':
+    case 'focusActiveTask':
+    case 'openContextPicker':
+    case 'exportTaskGraph':
+    case 'runMultiModelReview':
       // No payload, so nothing further to validate.
       return { kind } as Inbound;
+
+    case 'relayTask': {
+      const targetModel = modelRef(raw['targetModel']);
+      return { kind: 'relayTask', targetModel: targetModel ?? undefined };
+    }
+
+    case 'rollbackCheckpoint': {
+      const checkpointId = boundedString(raw['checkpointId'], 100);
+      if (checkpointId === null) return null;
+      return { kind: 'rollbackCheckpoint', checkpointId };
+    }
+
+    case 'runRecoveryBenchmark': {
+      const scenarioId = typeof raw['scenarioId'] === 'string' ? boundedString(raw['scenarioId'], 100) ?? undefined : undefined;
+      return { kind: 'runRecoveryBenchmark', scenarioId };
+    }
+
+    case 'injectChaos': {
+      const failureType = typeof raw['failureType'] === 'string' ? boundedString(raw['failureType'], 100) ?? 'RATE_LIMIT_429' : 'RATE_LIMIT_429';
+      const targetStep = typeof raw['targetStep'] === 'number' ? raw['targetStep'] : undefined;
+      return { kind: 'injectChaos', failureType, targetStep };
+    }
+
+    case 'importTaskGraph': {
+      const graphJson = typeof raw['graphJson'] === 'string' ? raw['graphJson'].slice(0, 500_000) : '';
+      if (!graphJson) return null;
+      return { kind: 'importTaskGraph', graphJson };
+    }
+
+    case 'dismissNotification': {
+      const id = typeof raw['id'] === 'string' ? boundedString(raw['id'], 100) ?? undefined : undefined;
+      return { kind: 'dismissNotification', id };
+    }
+
+    case 'switchNavTab': {
+      const tab = typeof raw['tab'] === 'string' ? boundedString(raw['tab'], 50) ?? 'composer' : 'composer';
+      return { kind: 'switchNavTab', tab };
+    }
+
+    case 'applyContext': {
+      const files = Array.isArray(raw['files'])
+        ? (raw['files'] as unknown[]).map((f) => String(f).slice(0, MAX_PATH_CHARS))
+        : [];
+      return { kind: 'applyContext', files };
+    }
+
+    case 'saveSetting': {
+      const category = typeof raw['category'] === 'string' ? String(raw['category']).slice(0, 50) : '';
+      const key = typeof raw['key'] === 'string' ? String(raw['key']).slice(0, 50) : '';
+      return { kind: 'saveSetting', category, key, value: raw['value'] };
+    }
+
+    case 'runPlayground': {
+      const providerId = typeof raw['providerId'] === 'string' ? String(raw['providerId']).slice(0, 100) : '';
+      const modelId = typeof raw['modelId'] === 'string' ? String(raw['modelId']).slice(0, 100) : '';
+      const testType = typeof raw['testType'] === 'string' ? String(raw['testType']).slice(0, 50) : 'connection';
+      return { kind: 'runPlayground', providerId, modelId, testType };
+    }
+
+    case 'selectModel': {
+      const providerId = typeof raw['providerId'] === 'string' ? String(raw['providerId']).slice(0, 100) : '';
+      const modelId = typeof raw['modelId'] === 'string' ? String(raw['modelId']).slice(0, 100) : '';
+      if (!providerId || !modelId) return null;
+      return { kind: 'selectModel', providerId, modelId };
+    }
+
+    case 'resolveApproval': {
+      const requestId = typeof raw['requestId'] === 'string' ? String(raw['requestId']).slice(0, 100) : '';
+      const decision = raw['decision'] === 'allow_once' || raw['decision'] === 'allow_for_task' ? raw['decision'] : 'deny';
+      return { kind: 'resolveApproval', requestId, decision };
+    }
 
     case 'start': {
       const objective = boundedString(raw['objective'], MAX_OBJECTIVE_CHARS);
@@ -277,6 +390,24 @@ export function parseInbound(raw: unknown): Inbound | null {
     case 'setupFilterModels': {
       const query = typeof raw['query'] === 'string' ? raw['query'].slice(0, 100) : '';
       return { kind: 'setupFilterModels', query };
+    }
+
+    case 'keyToggle':
+    case 'keyPromote':
+    case 'keyTest':
+    case 'keyRemove': {
+      const credentialId = raw['credentialId'];
+      if (typeof credentialId !== 'string' || credentialId === '' || credentialId.length > 200) {
+        return null;
+      }
+      // Ids are minted by the host; anything else is a frame inventing one.
+      if (!/^[A-Za-z0-9_-]+$/.test(credentialId)) {
+        return null;
+      }
+      if (kind === 'keyToggle') {
+        return { kind, credentialId, enabled: raw['enabled'] === true };
+      }
+      return { kind, credentialId };
     }
 
     case 'setupField': {

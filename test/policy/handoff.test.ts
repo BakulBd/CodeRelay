@@ -534,14 +534,94 @@ test('the handoff never contains a provider tool-call id, which has no meaning e
         {
           type: 'TOOL_EXECUTING',
           toolCallId: callId('toolu_01XYZ'),
+          toolName: 'write_file',
           sideEffectKey: sekId('sek'),
           safety: 'idempotent',
           preState: [],
           expectedPostState: null,
-        },
+        } as any,
       ),
       GPT,
     ),
   );
   assert.ok(!text.includes('toolu_01XYZ'), text);
 });
+
+// --- structured recovery state ---------------------------------------------
+
+test('the handoff packet extracts structured plan steps and requirements', () => {
+  const planMarkdown = [
+    '# Implementation Plan: Auth',
+    '## Steps',
+    '- [x] Implement JWT token signing in `src/auth.ts`',
+    '- [ ] Add refresh token rotation',
+    '- [ ] Verify with integration tests',
+    '## Requirements',
+    '- Tokens must expire after 15m',
+    '- Refresh tokens must be single-use',
+  ].join('\n');
+
+  const packet = buildHandoff(
+    history(
+      { type: 'TASK_STARTED', objective: 'Secure auth flow' },
+      { type: 'PLAN_PROPOSED', title: 'Auth Plan', planMarkdown },
+      {
+        type: 'TOOL_REQUESTED',
+        toolCallId: CALL,
+        toolName: 'write_file',
+        args: { path: 'src/auth.ts' },
+        sideEffectKey: KEY,
+        safety: 'idempotent',
+      },
+      {
+        type: 'TOOL_COMPLETED',
+        toolCallId: CALL,
+        sideEffectKey: KEY,
+        ok: true,
+        resultSummary: 'wrote auth.ts',
+        postState: [fp('src/auth.ts', 'abc')],
+      },
+      {
+        type: 'FAILED',
+        errorClass: 'RETRYABLE',
+        message: 'Anthropic 429 Rate Limit',
+        hadStreamedTokens: false,
+      },
+    ),
+    GPT,
+    {
+      checkpointRef: { id: 'cp-18', sequenceNumber: 18, commitSha: 'a1b2c3d4e5' },
+      gitState: { branch: 'feature/auth', isClean: true },
+      testResults: { total: 42, passed: 42, failed: 0 },
+      buildResults: { status: 'passed', summary: 'TypeScript 0 errors' },
+      diagnostics: [],
+    },
+  );
+
+  assert.equal(packet.goal, 'Secure auth flow');
+  assert.equal(packet.plan?.title, 'Auth Plan');
+  assert.deepEqual(packet.completedSteps, ['Implement JWT token signing in `src/auth.ts`']);
+  assert.deepEqual(packet.remainingSteps, [
+    'Add refresh token rotation',
+    'Verify with integration tests',
+  ]);
+  assert.equal(packet.currentStep, 'Add refresh token rotation');
+  assert.equal(packet.requirements.length, 5);
+  assert.deepEqual(packet.filesChanged, ['src/auth.ts']);
+  assert.equal(packet.checkpointRef?.sequenceNumber, 18);
+  assert.equal(packet.testResults?.passed, 42);
+  assert.equal(packet.errors.length, 1);
+  assert.equal(packet.errors[0]?.errorClass, 'RETRYABLE');
+
+  const rendered = renderHandoff(packet);
+  assert.match(rendered, /## Architectural Plan & Steps/);
+  assert.match(rendered, /\[x\] Implement JWT token signing/);
+  assert.match(rendered, /\[ \] Add refresh token rotation/);
+  assert.match(rendered, /\*\*Active Interrupted Step\*\*: Add refresh token rotation/);
+  assert.match(rendered, /Preserved Checkpoint: #18/);
+  assert.match(rendered, /Tests: 42\/42 passed/);
+  assert.match(rendered, /Build: PASSED/);
+  assert.match(rendered, /Diagnostics: 0 errors/);
+  assert.match(rendered, /Verified modified files \(1\): src\/auth\.ts/);
+});
+

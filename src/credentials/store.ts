@@ -49,6 +49,24 @@ export interface CredentialRecord {
   readonly addedAt: string;
   /** Set when the provider rejected the key outright. Requires user action. */
   readonly disabledReason: string | null;
+  /**
+   * Turned off by the user rather than by a provider rejection.
+   *
+   * Kept separate from `disabledReason` because the two need different
+   * treatment: a rejected key is a fault to surface and fix, while a key the
+   * user parked is a deliberate choice that must not be presented as a problem
+   * — and must not be silently re-enabled by anything automatic.
+   */
+  readonly userDisabled: boolean;
+  /**
+   * Preference order within a provider. Lower is tried first.
+   *
+   * A tiebreak, not an override: health still comes first, so a high-priority
+   * key that is rate limited or failing does not block a healthy one. Priority
+   * decides between keys that are equally usable — which is exactly the case a
+   * user wants control over, e.g. spend a work key before a personal one.
+   */
+  readonly priority: number;
   /** Epoch ms until which this credential is throttled. */
   readonly coolingUntil: number | null;
   readonly consecutiveFailures: number;
@@ -72,6 +90,14 @@ export type CredentialChoice =
     };
 
 export const METADATA_KEY = 'coderelay.credentials';
+
+/**
+ * The priority every credential starts at.
+ *
+ * Shared rather than incrementing, so untouched keys are peers and rotation
+ * spreads across them. See `add` for why that is the right default.
+ */
+export const DEFAULT_PRIORITY = 0;
 const SECRET_PREFIX = 'coderelay.secret.';
 
 /** Cooldown applied when a provider throttles us without saying for how long. */
@@ -129,7 +155,20 @@ export class CredentialManager {
   /** All records, in insertion order. Never includes key material. */
   records(): readonly CredentialRecord[] {
     const stored = this.metadata.get<CredentialRecord[]>(METADATA_KEY);
-    return Array.isArray(stored) ? stored : [];
+    if (!Array.isArray(stored)) {
+      return [];
+    }
+    // Records written before `priority` and `userDisabled` existed are missing
+    // both. Normalising on read rather than migrating on write means an upgrade
+    // needs no migration step at all, and a downgrade cannot corrupt anything —
+    // and it matters concretely: an undefined `priority` reaching the sort
+    // comparator yields NaN, which makes the ordering arbitrary rather than
+    // merely wrong.
+    return stored.map((record) => ({
+      ...record,
+      priority: typeof record.priority === 'number' ? record.priority : DEFAULT_PRIORITY,
+      userDisabled: record.userDisabled === true,
+    }));
   }
 
   list(providerId?: string): readonly CredentialRef[] {
@@ -169,12 +208,73 @@ export class CredentialManager {
       consecutiveFailures: 0,
       lastUsedAt: null,
       lastFailureReason: null,
+      userDisabled: false,
+      // Every key starts at the same priority, so keys the user has expressed
+      // no preference between spread load evenly by least-recently-used rather
+      // than one being hammered. Priority only starts to discriminate once the
+      // user actually orders them — which is what makes it a preference rather
+      // than an accident of the order keys were pasted in.
+      priority: DEFAULT_PRIORITY,
     };
 
     // Appending inside the serialized section, so a key added while a health
     // update is in flight cannot be dropped by that update's rewrite.
     await this.mutate(() => [...this.records(), record]);
     return toRef(record);
+  }
+
+  /**
+   * Reads one specific credential's secret, for testing that key alone.
+   *
+   * Deliberately narrow and deliberately separate from `next()`. `next()` is
+   * rotation: it picks whichever key should serve the next request and records
+   * the use. This answers a different question — "is *this* key good?" — which
+   * is unanswerable through rotation, because with three keys configured the
+   * pool decides which one you tested and you learn nothing about the other two.
+   *
+   * It records nothing. A connection test is a question, and answering it must
+   * not move a key's position in the rotation or mark it as recently used.
+   *
+   * Returns null when the record is unknown or the keychain has no entry for
+   * it, which is the same state `next()` treats as a broken record.
+   */
+  async secretOf(credentialId: string): Promise<string | null> {
+    const record = this.find(credentialId);
+    if (record === null) {
+      return null;
+    }
+    const secret = await this.secrets.get(secretKey(credentialId));
+    return secret === undefined || secret === '' ? null : secret;
+  }
+
+  /**
+   * Turns a credential on or off by hand.
+   *
+   * Deliberately cannot clear `disabledReason`: that flag means the provider
+   * rejected the key, and letting a toggle overrule the provider would put a
+   * key back into rotation that is known not to work. Re-enabling a rejected
+   * key means replacing it.
+   */
+  async setEnabled(credentialId: string, enabled: boolean): Promise<void> {
+    await this.patch(credentialId, { userDisabled: !enabled });
+  }
+
+  /**
+   * Reorders a provider's keys.
+   *
+   * Takes the whole ordered list rather than one index, because a move is a
+   * rearrangement of a sequence and applying it one element at a time leaves
+   * intermediate states where two keys claim the same slot.
+   */
+  async reorder(providerId: string, orderedIds: readonly string[]): Promise<void> {
+    const rank = new Map(orderedIds.map((id, i) => [id, i]));
+    await this.mutate(() =>
+      this.records().map((record) =>
+        record.providerId === providerId && rank.has(record.credentialId)
+          ? { ...record, priority: rank.get(record.credentialId) ?? record.priority }
+          : record,
+      ),
+    );
   }
 
   /** Removes the record and the secret. Missing either one is not an error. */
@@ -207,13 +307,17 @@ export class CredentialManager {
       return { t: 'none', reason: `No credential is configured for ${providerId}.` };
     }
 
-    const enabled = forProvider.filter((r) => r.disabledReason === null);
+    const enabled = forProvider.filter((r) => r.disabledReason === null && !r.userDisabled);
     if (enabled.length === 0) {
+      // The two reasons need different words because they need different fixes:
+      // one is a broken key, the other is a switch the user threw.
+      const allParked = forProvider.every((r) => r.userDisabled);
       return {
         t: 'none',
-        reason:
-          `Every ${providerId} credential has been disabled after being rejected. ` +
-          'Add a valid key or re-enable one.',
+        reason: allParked
+          ? `Every ${providerId} credential is turned off. Turn one back on to use this provider.`
+          : `Every ${providerId} credential has been disabled after being rejected. ` +
+            'Add a valid key or re-enable one.',
       };
     }
 
@@ -229,10 +333,19 @@ export class CredentialManager {
       };
     }
 
-    // Fewest recent failures first, then least recently used.
+    // Health, then the user's stated preference, then least recently used.
+    //
+    // Health leads deliberately: priority is a preference between keys that
+    // would both work, and letting it outrank failure history would send every
+    // request to a key that is currently failing simply because it was listed
+    // first. Least-recently-used breaks the remaining ties so load spreads
+    // evenly across equal keys rather than hammering one.
     const ordered = [...ready].sort((a, b) => {
       if (a.consecutiveFailures !== b.consecutiveFailures) {
         return a.consecutiveFailures - b.consecutiveFailures;
+      }
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
       }
       return usedAt(a) - usedAt(b);
     });

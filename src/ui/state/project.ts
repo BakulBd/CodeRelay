@@ -26,6 +26,8 @@
  */
 import type { FileFingerprint, LedgerEntry } from '../../continuity/entries.js';
 import type { ModelRef, ToolCallId, ToolSafety } from '../../core/types.js';
+import { buildRecoveryLog, type RecoveryLog } from './recovery.js';
+import { parseRequirements, type Requirement } from '../../plan/requirements.js';
 
 /**
  * What is true of a task right now.
@@ -172,9 +174,33 @@ export interface TaskProjection {
   readonly pendingQuestion: string | null;
   /** The newest failure, for the recovery panel. */
   readonly lastFailure: { readonly errorClass: string; readonly message: string } | null;
+  /**
+   * The recovery narrative: who worked on this task and what went wrong.
+   *
+   * Built from the *whole* entry list rather than from `nodes`, which is capped
+   * at `maxNodes` for rendering. A recovery log that silently dropped the first
+   * failover on a long task would understate the one claim it exists to make.
+   */
+  readonly recovery: RecoveryLog;
+  /**
+   * Requirements parsed from the newest proposed plan.
+   *
+   * Parsed here rather than assessed here: turning them into statuses needs the
+   * verification result, which is live extension state rather than ledger
+   * history, so the assessment happens in `present()` where both are in hand.
+   */
+  readonly requirements: readonly Requirement[];
 }
 
 export interface ProjectOptions {
+  /**
+   * Checkpoints proved to exist by git, or null when git could not be asked.
+   *
+   * Passed in rather than read here because this module is pure and a git call
+   * is not. Null and 0 are different answers and the view renders them
+   * differently — "not a repository" is not "no snapshots were taken".
+   */
+  readonly checkpointCount?: number | null;
   /** True when this window is actively running the task. */
   readonly live?: boolean;
   readonly now?: number;
@@ -392,6 +418,7 @@ export function projectTask(
   const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
 
   const nodes: TimelineNode[] = [];
+  let latestPlan: string | null = null;
   const tools = new Map<ToolCallId, ToolAccumulator>();
   const turns = new Map<string, TurnAccumulator>();
 
@@ -606,6 +633,9 @@ export function projectTask(
       }
 
       case 'PLAN_PROPOSED': {
+        // The newest plan wins: a regenerated plan replaces the requirements
+        // the user was looking at rather than adding to them.
+        latestPlan = entry.planMarkdown;
         nodes.push({
           kind: 'plan',
           id: `plan-${entry.seq}`,
@@ -709,6 +739,15 @@ export function projectTask(
     changes,
     pendingQuestion,
     lastFailure: last !== undefined && isTerminal(last) && status === 'completed' ? null : lastFailure,
+    // Built from every entry, not from the truncated `nodes` above: a task long
+    // enough to lose its head is exactly the task whose first failover matters.
+    requirements: latestPlan === null ? [] : parseRequirements(latestPlan),
+    recovery: buildRecoveryLog({
+      entries,
+      ...(options.checkpointCount === undefined
+        ? {}
+        : { checkpointCount: options.checkpointCount }),
+    }),
   };
 }
 

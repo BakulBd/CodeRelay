@@ -56,6 +56,8 @@ import {
 import type { BuiltRequest, ProviderAdapter } from '../providers/adapter.js';
 import { streamTurn, type FetchLike, type StreamOutcome } from '../providers/transport.js';
 import { classifyFailure, type RequestClassification } from '../recovery/classify.js';
+import type { AttemptOutcome, EndpointKey } from '../policy/health.js';
+import type { VerificationRun } from '../verify/run.js';
 import type { ToolCallRequest, ToolOutcome, ToolRunner } from '../tools/runner.js';
 import type { ToolRegistry } from '../tools/tool.js';
 
@@ -138,6 +140,52 @@ export interface AgentLoopDeps {
    */
   readonly connectTimeoutMs?: number | null;
   readonly idleTimeoutMs?: number | null;
+  /**
+   * Source of jitter for computed retry backoff.
+   *
+   * Injected so `route()` stays a pure function of its inputs and the decision
+   * table remains assertable. Production supplies `Math.random`; tests omit it
+   * and keep the deterministic delay. A provider-supplied `retry-after` is
+   * never jittered — see `backoffMs`.
+   */
+  readonly random?: () => number;
+  /**
+   * Clock used to measure time-to-first-token for health.
+   *
+   * Injected like every other external edge, so a health assertion can be made
+   * exact instead of approximate. Defaults to `Date.now`.
+   */
+  readonly now?: () => number;
+  /**
+   * Records what each endpoint actually did, so a provider that has been
+   * failing stops being chosen before it wastes another turn proving it.
+   *
+   * Optional because the loop is fully functional without it: health only ever
+   * *reorders* and *ejects* candidates, it never invents one. A task run with
+   * no tracker behaves exactly as it did before health existed.
+   */
+  readonly health?: HealthRecorder | null;
+  /**
+   * Runs the project's checks when the model claims to be finished.
+   *
+   * Optional: with no verifier the loop finishes on the model's word, which is
+   * the behaviour that existed before the gate. Supplying one makes "done" a
+   * verdict rather than a claim.
+   */
+  readonly verifier?: () => Promise<VerificationRun>;
+}
+
+/**
+ * The slice of `HealthTracker` the loop needs.
+ *
+ * Narrowed to two methods rather than taking the class so the loop cannot
+ * accidentally start reading health to make decisions — that is the router's
+ * job, and a loop that both records and interprets health would be a second
+ * routing policy hiding inside the sequencer.
+ */
+export interface HealthRecorder {
+  readonly record: (key: EndpointKey, outcome: AttemptOutcome) => unknown;
+  readonly releaseProbeSlot: (key: EndpointKey) => void;
 }
 
 /**
@@ -390,6 +438,52 @@ export class AgentLoop {
   }
 
   /**
+   * Runs the project's own checks before a task is allowed to finish.
+   *
+   * Returns null when the work may complete, or the text to hand back when it
+   * may not. Absent verifier means no gate at all — the loop behaves exactly as
+   * it did before this existed, which is what keeps the dependency optional.
+   *
+   * `unverifiable` passes the gate deliberately: a project that declares no
+   * checks has not failed them, and refusing to ever finish such a task would
+   * make the gate a trap rather than a safeguard.
+   */
+  private async verifyBeforeDone(): Promise<string | null> {
+    const verifier = this.deps.verifier;
+    if (verifier === undefined) {
+      return null;
+    }
+
+    let run: VerificationRun;
+    try {
+      run = await verifier();
+    } catch {
+      // A gate that cannot run must not block the task: failing to check is not
+      // the same as checking and finding a problem.
+      return null;
+    }
+
+    if (run.verdict === 'verified' || run.verdict === 'unverifiable') {
+      return null;
+    }
+
+    const failed = run.checks.filter((c) => c.status === 'failed' || c.status === 'errored');
+    const detail = failed
+      .map((c) => `${c.label} (${c.command}): ${c.summary}\n${c.output}`.trim())
+      .join('\n\n');
+
+    return [
+      'CodeRelay Evidence Gate: the task is not complete.',
+      '',
+      "You reported the work as finished, but the project's own checks did not pass.",
+      'Fix what follows and then finish again. Do not restate that the work is done',
+      'without changing anything.',
+      '',
+      detail,
+    ].join('\n');
+  }
+
+  /**
    * One streaming attempt plus whatever follows from it.
    *
    * `CONTINUE` means the loop should keep going; the state needed for that
@@ -465,6 +559,10 @@ export class AgentLoop {
     // special case for a turn that streamed less than one progress interval.
     let progress: Promise<unknown> = Promise.resolve();
     let flushedChars = 0;
+    const now = this.deps.now ?? Date.now;
+    const startedAt = now();
+    let firstTokenAt: number | null = null;
+    const endpoint: EndpointKey = { model: this.model, credentialId };
 
     const outcome = await streamTurn(
       {
@@ -486,6 +584,13 @@ export class AgentLoop {
       },
       (event) => {
         this.deps.observer?.({ t: 'stream', event });
+        // Time-to-first-token, not total duration: total is dominated by how
+        // much the model chose to say, which is a property of the request
+        // rather than of the endpoint. First-token latency is the part that
+        // reflects queueing and load.
+        if (firstTokenAt === null && (event.t === 'text' || event.t === 'tool_call')) {
+          firstTokenAt = now();
+        }
         switch (event.t) {
           case 'text':
             collected.text += event.delta;
@@ -530,6 +635,10 @@ export class AgentLoop {
         type: 'TASK_ABANDONED',
         reason: 'Cancelled by the user.',
       });
+      // The user pressing stop is not evidence about the endpoint. Release the
+      // slot so a cancelled breaker probe does not stay marked in flight and
+      // eject a healthy endpoint forever.
+      this.deps.health?.releaseProbeSlot(endpoint);
       return { kind: 'END', result: { kind: 'CANCELLED' } };
     }
 
@@ -559,11 +668,35 @@ export class AgentLoop {
       }
 
       await credentials.reportSuccess(credentialId);
+      // Recorded only on a turn that actually completed. A truncated turn takes
+      // the failure path above, which is right: the request arrived, but the
+      // endpoint did not deliver a usable turn.
+      this.deps.health?.record(endpoint, {
+        ok: true,
+        // Falls back to total elapsed when nothing streamed — inventing a zero
+        // would report a measurement nobody took.
+        latencyMs: (firstTokenAt ?? now()) - startedAt,
+      });
       if (collected.text !== '') {
         this.transcript.push({ role: 'assistant', text: collected.text });
       }
 
       if (collected.toolCalls.length === 0) {
+        // The model has claimed it is finished. That is an assertion, and the
+        // evidence gate is what turns it into a fact: the project's own checks
+        // run, and a task is only DONE when they pass.
+        //
+        // A failure is handed back as a `note` rather than ending the task,
+        // because a type error the model can see is a type error it can fix —
+        // and the alternative, stopping with "verification failed", makes the
+        // user do work the agent is holding the context to do.
+        const gate = await this.verifyBeforeDone();
+        if (gate !== null) {
+          this.transcript.push({ role: 'note', text: gate });
+          // A genuinely new step: the model is being asked to do more work, not
+          // to retry the turn it just completed.
+          return { kind: 'CONTINUE', sameTurn: false };
+        }
         await ledger.append({ ...ids, type: 'TASK_DONE' });
         return { kind: 'END', result: { kind: 'DONE', turns: this.turn } };
       }
@@ -605,6 +738,15 @@ export class AgentLoop {
   ): Promise<TurnStep> {
     const { ledger, credentials } = this.deps;
 
+    // Every request failure funnels through here, truncation included, so this
+    // is the one place health has to be told about a bad outcome. The tracker
+    // decides what counts as evidence: a rejected key or an invalid request
+    // says nothing about whether the endpoint is well.
+    this.deps.health?.record(
+      { model: this.model, credentialId },
+      { ok: false, errorClass: failure.errorClass },
+    );
+
     await ledger.append({
       ...ids,
       type: 'FAILED',
@@ -631,6 +773,7 @@ export class AgentLoop {
       requirements: this.deps.requirements,
       compactionsDone: this.compactions,
       limits: this.limits,
+      ...(this.deps.random === undefined ? {} : { random: this.deps.random }),
     });
     this.deps.observer?.({ t: 'decision', decision });
 
