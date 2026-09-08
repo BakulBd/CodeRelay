@@ -56,7 +56,9 @@ import {
 import type { BuiltRequest, ProviderAdapter } from '../providers/adapter.js';
 import { streamTurn, type FetchLike, type StreamOutcome } from '../providers/transport.js';
 import { classifyFailure, type RequestClassification } from '../recovery/classify.js';
-import type { AttemptOutcome, EndpointKey } from '../policy/health.js';
+import type { AttemptOutcome, EndpointHealth, EndpointKey } from '../policy/health.js';
+import { DEFAULT_HEDGE_LIMITS, planHedge, type HedgeLimits } from '../policy/hedge.js';
+import { race, realTimer, type Timer } from './race.js';
 import type { VerificationRun } from '../verify/run.js';
 import type { ToolCallRequest, ToolOutcome, ToolRunner } from '../tools/runner.js';
 import type { ToolRegistry } from '../tools/tool.js';
@@ -102,7 +104,16 @@ export type LoopEvent =
   | { readonly t: 'stream'; readonly event: NormalizedEvent }
   | { readonly t: 'tool'; readonly toolName: string; readonly outcome: ToolOutcome }
   | { readonly t: 'checkpoint'; readonly outcome: CheckpointOutcome }
-  | { readonly t: 'decision'; readonly decision: RouteDecision };
+  | { readonly t: 'decision'; readonly decision: RouteDecision }
+  /**
+   * A concurrent request was engaged alongside the primary.
+   *
+   * Reported here rather than written to the ledger deliberately: a hedge that
+   * loses must leave no durable trace, or recovery would try to reconcile a
+   * turn that never landed. The UI still needs to say a second provider was
+   * engaged, because the user is paying for it.
+   */
+  | { readonly t: 'hedge'; readonly model: ModelRef };
 
 export interface AgentLoopDeps {
   readonly taskId: TaskId;
@@ -173,6 +184,30 @@ export interface AgentLoopDeps {
    * verdict rather than a claim.
    */
   readonly verifier?: () => Promise<VerificationRun>;
+  /**
+   * Run more than one endpoint at once for a turn.
+   *
+   * Absent, or `mode: 'off'`, means exactly one leg — byte-for-byte the
+   * behaviour this loop has always had, with no extra requests and no extra
+   * ledger entries. Opting in races *proposals*: several endpoints are asked,
+   * the first usable answer wins, and every other leg is aborted before
+   * anything is committed.
+   *
+   * The safety argument is in `policy/hedge.ts`. The short version: a leg
+   * produces text and tool-call *requests*, and only the winner is dispatched
+   * through the one `ToolRunner`. A losing leg can cost input tokens; it cannot
+   * cost a duplicated write.
+   */
+  readonly hedge?: HedgeLimits;
+  /** Health for hedge planning. Injected so the planner stays pure. */
+  readonly hedgeHealth?: (model: ModelRef, credentialId: string) => EndpointHealth;
+  /** Breaker admission for hedge planning. Mutates, so the loop cannot fake it. */
+  readonly hedgeAdmit?: (
+    model: ModelRef,
+    credentialId: string,
+  ) => { readonly ok: boolean; readonly probe: boolean };
+  /** Injected so hedge timing is deterministic under test. */
+  readonly timer?: Timer;
 }
 
 /**
@@ -215,6 +250,22 @@ export type LoopResult =
 
 const DEFAULT_MAX_TURNS = 32;
 const DEFAULT_PROGRESS_CHARS = 500;
+
+/**
+ * One leg's proposal.
+ *
+ * Text and tool-call *requests* only. Nothing here has touched the disk: the
+ * winner is committed later through the single `ToolRunner`, and every loser is
+ * discarded. That separation is the entire reason racing is safe.
+ */
+interface LegResult {
+  readonly model: ModelRef;
+  readonly credentialId: string;
+  readonly outcome: StreamOutcome;
+  readonly collected: Collected;
+  /** Time to first token, for health. */
+  readonly latencyMs: number;
+}
 
 /** What one streaming attempt produced. */
 interface Collected {
@@ -547,9 +598,6 @@ export class AgentLoop {
     // some providers authenticate through the URL or a body signature rather
     // than a header, and it applies auth over the builder's headers so a prompt
     // builder cannot override credentials.
-    const built = adapter.sign(unsigned, acquired.secret);
-
-    const collected: Collected = { text: '', toolCalls: [], stop: null };
     // Only the most recent progress append is tracked. Each one supersedes the
     // last (every entry carries the whole text so far), so awaiting the newest is
     // awaiting all of them: the ledger serializes appends, so once the newest has
@@ -558,69 +606,134 @@ export class AgentLoop {
     // already-resolved promise rather than null, so the wait below needs no
     // special case for a turn that streamed less than one progress interval.
     let progress: Promise<unknown> = Promise.resolve();
-    let flushedChars = 0;
     const now = this.deps.now ?? Date.now;
-    const startedAt = now();
-    let firstTokenAt: number | null = null;
-    const endpoint: EndpointKey = { model: this.model, credentialId };
 
-    const outcome = await streamTurn(
-      {
-        fetchImpl,
-        decoder: adapter.createDecoder(),
-        ...(this.deps.connectTimeoutMs === undefined
-          ? {}
-          : { connectTimeoutMs: this.deps.connectTimeoutMs }),
-        ...(this.deps.idleTimeoutMs === undefined
-          ? {}
-          : { idleTimeoutMs: this.deps.idleTimeoutMs }),
-      },
-      {
-        url: built.url,
-        method: built.method,
-        headers: built.headers ?? {},
-        body: built.body,
-        signal,
-      },
-      (event) => {
-        this.deps.observer?.({ t: 'stream', event });
-        // Time-to-first-token, not total duration: total is dominated by how
-        // much the model chose to say, which is a property of the request
-        // rather than of the endpoint. First-token latency is the part that
-        // reflects queueing and load.
-        if (firstTokenAt === null && (event.t === 'text' || event.t === 'tool_call')) {
-          firstTokenAt = now();
-        }
-        switch (event.t) {
-          case 'text':
-            collected.text += event.delta;
-            if (collected.text.length - flushedChars >= this.progressEveryChars) {
-              flushedChars = collected.text.length;
-              // Not awaited: the sink is synchronous. The ledger serializes its
-              // own appends, so ordering holds. `appendEventual` skips the fsync
-              // because these entries only ever feed REGENERATE_TURN — no side
-              // effect depends on them, so paying for durability once per few
-              // hundred characters of output would buy nothing.
-              progress = ledger.appendEventual({
-                ...ids,
-                type: 'STREAM_PROGRESS',
-                textSoFar: collected.text,
-              });
-            }
-            break;
-          case 'tool_call':
-            collected.toolCalls.push({ id: event.id, name: event.name, args: event.args });
-            break;
-          case 'done':
-            collected.stop = event.reason;
-            break;
-          default:
-            // `thinking` and `usage` carry nothing the ledger needs, and
-            // reasoning text is deliberately not persisted or forwarded.
-            break;
-        }
-      },
+    /**
+     * Runs one endpoint to a proposal.
+     *
+     * Pure with respect to side effects: it produces text and tool-call
+     * *requests* and commits none of them.
+     *
+     * Only the primary writes `STREAM_PROGRESS` and only the primary's tokens
+     * reach the observer. Two models streaming into one record would interleave
+     * their half-sentences, and the loser's text is discarded anyway.
+     */
+    const runLeg = async (
+      legModel: ModelRef,
+      legCredentialId: string,
+      legSecret: string,
+      legAdapter: ProviderAdapter,
+      isPrimary: boolean,
+      legSignal: AbortSignal,
+    ): Promise<LegResult> => {
+      const collected: Collected = { text: '', toolCalls: [], stop: null };
+      const startedAt = now();
+      let firstTokenAt: number | null = null;
+      let flushedChars = 0;
+
+      // The secret leaves `CredentialManager` and enters the provider layer
+      // here, and goes nowhere else: never logged, never written to the ledger,
+      // never attached to an outcome.
+      const built = legAdapter.sign(unsigned, legSecret);
+
+      const legOutcome = await streamTurn(
+        {
+          fetchImpl,
+          decoder: legAdapter.createDecoder(),
+          ...(this.deps.connectTimeoutMs === undefined
+            ? {}
+            : { connectTimeoutMs: this.deps.connectTimeoutMs }),
+          ...(this.deps.idleTimeoutMs === undefined
+            ? {}
+            : { idleTimeoutMs: this.deps.idleTimeoutMs }),
+        },
+        {
+          url: built.url,
+          method: built.method,
+          headers: built.headers ?? {},
+          body: built.body,
+          signal: legSignal,
+        },
+        (event) => {
+          if (isPrimary) {
+            this.deps.observer?.({ t: 'stream', event });
+          }
+          // Time-to-first-token, not total duration: total is dominated by how
+          // much the model chose to say, which is a property of the request
+          // rather than of the endpoint. First-token latency is the part that
+          // reflects queueing and load.
+          if (firstTokenAt === null && (event.t === 'text' || event.t === 'tool_call')) {
+            firstTokenAt = now();
+          }
+          switch (event.t) {
+            case 'text':
+              collected.text += event.delta;
+              if (isPrimary && collected.text.length - flushedChars >= this.progressEveryChars) {
+                flushedChars = collected.text.length;
+                // Not awaited: the sink is synchronous. The ledger serializes
+                // its own appends, so ordering holds. `appendEventual` skips the
+                // fsync because these entries only ever feed REGENERATE_TURN —
+                // no side effect depends on them.
+                progress = ledger.appendEventual({
+                  ...ids,
+                  type: 'STREAM_PROGRESS',
+                  textSoFar: collected.text,
+                });
+              }
+              break;
+            case 'tool_call':
+              collected.toolCalls.push({ id: event.id, name: event.name, args: event.args });
+              break;
+            case 'done':
+              collected.stop = event.reason;
+              break;
+            default:
+              // `thinking` and `usage` carry nothing the ledger needs, and
+              // reasoning text is deliberately not persisted or forwarded.
+              break;
+          }
+        },
+      );
+
+      return {
+        model: legModel,
+        credentialId: legCredentialId,
+        outcome: legOutcome,
+        collected,
+        latencyMs: (firstTokenAt ?? now()) - startedAt,
+      };
+    };
+
+    const won = await this.raceLegs(
+      runLeg,
+      credentialId,
+      acquired.secret,
+      adapter,
+      signal,
     );
+    const outcome = won.outcome;
+    const collected = won.collected;
+    const firstTokenAt = won.latencyMs;
+    const startedAt = 0;
+    const endpoint: EndpointKey = { model: won.model, credentialId: won.credentialId };
+
+    // A hedge that won is a model change, and a model change is never silent.
+    // `PROVIDER_SWITCHED` already exists and recovery already understands it, so
+    // no new entry type is needed — and the timeline reads the same whether the
+    // switch came from a race or from a failover.
+    if (
+      won.model.providerId !== this.model.providerId ||
+      won.model.modelId !== this.model.modelId
+    ) {
+      await ledger.append({
+        ...ids,
+        type: 'PROVIDER_SWITCHED',
+        from: this.model,
+        to: won.model,
+        reason: 'A concurrent request to this model answered first.',
+      });
+      this.model = won.model;
+    }
 
     // Awaiting the newest append awaits every earlier one, since the ledger
     // serializes them. Swallowed rather than propagated: progress is a hint for
@@ -720,6 +833,182 @@ export class AgentLoop {
 
     const failure = outcome.failure ?? unexpectedFailure(outcome);
     return this.handleFailure(ids, credentialId, failure, outcome.hadStreamedTokens);
+  }
+
+  /**
+   * Runs the primary endpoint, and a hedge alongside it when one is planned.
+   *
+   * With hedging off — the default — this calls `runLeg` once and returns, so
+   * the code path is the one the loop has always taken: no racer, no timers, no
+   * abort controllers layered over a single request.
+   *
+   * With it on, `planHedge` decides which additional endpoints to engage and
+   * when, and `race` runs them. Two rules make that safe:
+   *
+   *  - **Only the primary writes to the ledger.** A hedge leg that loses must
+   *    leave no trace, because a `STREAMING` entry with no
+   *    `MODEL_RESPONSE_COMPLETED` is byte-for-byte what an *interrupted turn*
+   *    looks like to `planRecovery` — it would try to reconcile a turn that
+   *    never happened.
+   *  - **A leg only wins on a turn that completed.** A truncated or failed
+   *    stream is a failure the racer keeps going past, which is exactly what
+   *    lets a hedge rescue a primary that died mid-turn.
+   *
+   * The primary is always the model the task is pinned to, so a hedge can only
+   * ever add an option; it never displaces the user's choice before that choice
+   * has had its chance.
+   */
+  private async raceLegs(
+    runLeg: (
+      model: ModelRef,
+      credentialId: string,
+      secret: string,
+      adapter: ProviderAdapter,
+      isPrimary: boolean,
+      signal: AbortSignal,
+    ) => Promise<LegResult>,
+    primaryCredentialId: string,
+    primarySecret: string,
+    primaryAdapter: ProviderAdapter,
+    signal: AbortSignal | undefined,
+  ): Promise<LegResult> {
+    const limits = this.deps.hedge;
+    const fallbackSignal = signal ?? new AbortController().signal;
+
+    const runPrimaryAlone = (): Promise<LegResult> =>
+      runLeg(this.model, primaryCredentialId, primarySecret, primaryAdapter, true, fallbackSignal);
+
+    if (limits === undefined || limits.mode === 'off') {
+      return runPrimaryAlone();
+    }
+
+    const primary = { model: this.model, credentialId: primaryCredentialId };
+    const plan = planHedge({
+      candidates: await this.deps.candidates(),
+      requirements: this.deps.requirements,
+      health: this.deps.hedgeHealth ?? (() => freshEndpointHealth(this.model, primaryCredentialId)),
+      admit: this.deps.hedgeAdmit ?? (() => ({ ok: true, probe: false })),
+      preferred: primary,
+      limits: limits ?? DEFAULT_HEDGE_LIMITS,
+      now: (this.deps.now ?? Date.now)(),
+    });
+
+    // Anything on the model the task is already pinned to is the primary, not a
+    // hedge; racing a model against itself buys nothing and doubles its cost.
+    const extra = plan.legs.filter(
+      (leg) =>
+        leg.model.providerId !== primary.model.providerId ||
+        leg.model.modelId !== primary.model.modelId,
+    );
+    if (extra.length === 0) {
+      return runPrimaryAlone();
+    }
+
+    interface LegPayload {
+      readonly model: ModelRef;
+      readonly credentialId: string;
+      readonly secret: string;
+      readonly adapter: ProviderAdapter;
+      readonly primary: boolean;
+    }
+
+    const legs: { id: string; startAfterMs: number; payload: LegPayload }[] = [
+      {
+        id: 'primary',
+        startAfterMs: 0,
+        payload: {
+          model: this.model,
+          credentialId: primaryCredentialId,
+          secret: primarySecret,
+          adapter: primaryAdapter,
+          primary: true,
+        },
+      },
+    ];
+
+    for (const [index, leg] of extra.entries()) {
+      const adapter = this.deps.adapters.get(leg.model.providerId);
+      if (adapter === undefined) {
+        continue;
+      }
+      // The pool picks the key, not the plan. `planHedge` chooses the *model*;
+      // which credential is usable right now is `CredentialManager`'s to answer,
+      // and asking the plan would let it hand out one that has since cooled.
+      const acquired = await this.acquireCredential(leg.model.providerId);
+      if (acquired.t === 'blocked') {
+        continue;
+      }
+      legs.push({
+        id: `hedge-${index}`,
+        startAfterMs: leg.startAfterMs,
+        payload: {
+          model: leg.model,
+          credentialId: acquired.credentialId,
+          secret: acquired.secret,
+          adapter,
+          primary: false,
+        },
+      });
+    }
+
+    if (legs.length === 1) {
+      return runPrimaryAlone();
+    }
+
+    let primaryResult: LegResult | null = null;
+
+    const outcome = await race<LegPayload, LegResult, LegResult>(
+      legs,
+      {
+        timer: this.deps.timer ?? realTimer,
+        onLegStarted: (leg) => {
+          if (!leg.payload.primary) {
+            this.deps.observer?.({ t: 'hedge', model: leg.payload.model });
+          }
+        },
+        onAbandoned: (leg) => {
+          // An aborted leg is not evidence the endpoint is unwell, but it must
+          // give back any breaker probe slot it claimed, or that endpoint stays
+          // ejected forever.
+          this.deps.health?.releaseProbeSlot({
+            model: leg.payload.model,
+            credentialId: leg.payload.credentialId,
+          });
+        },
+        run: async (leg, legSignal) => {
+          const result = await runLeg(
+            leg.payload.model,
+            leg.payload.credentialId,
+            leg.payload.secret,
+            leg.payload.adapter,
+            leg.payload.primary,
+            legSignal,
+          );
+          if (leg.payload.primary) {
+            primaryResult = result;
+          }
+          return result.outcome.ok && !result.outcome.truncated
+            ? { ok: true, value: result }
+            : { ok: false, failure: result };
+        },
+      },
+      signal,
+    );
+
+    if (outcome.kind === 'won') {
+      return outcome.value;
+    }
+
+    // Every leg failed, or the user cancelled. The primary's outcome is the one
+    // the router should reason about: it is the endpoint the task is pinned to,
+    // and routing decisions are made about that model's budget and credential.
+    return (
+      primaryResult ??
+      (outcome.kind === 'exhausted' || outcome.kind === 'cancelled'
+        ? outcome.failures[0]?.failure
+        : undefined) ??
+      runPrimaryAlone()
+    );
   }
 
   // --- failure handling ---
@@ -1066,6 +1355,28 @@ function hasProgress(entries: readonly LedgerEntry[]): boolean {
       e.type === 'TOOL_COMPLETED' ||
       e.type === 'TOOL_RECONCILED',
   );
+}
+
+/**
+ * Health for an endpoint nothing has been recorded about.
+ *
+ * Used when the caller supplies no health source. Every field is null or zero
+ * because nothing has been observed — which `planHedge` reads as `unknown`, and
+ * ranks behind a proven endpoint rather than ahead of one.
+ */
+function freshEndpointHealth(model: ModelRef, credentialId: string): EndpointHealth {
+  return {
+    key: { model, credentialId },
+    successRate: null,
+    latencyMs: null,
+    estimatedTailMs: null,
+    consecutiveFailures: 0,
+    totalSuccesses: 0,
+    totalFailures: 0,
+    lastOutcomeAt: null,
+    lastErrorClass: null,
+    breaker: { kind: 'closed' },
+  };
 }
 
 /**

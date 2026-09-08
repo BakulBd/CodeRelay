@@ -63,8 +63,13 @@ export const DEFAULT_SETTINGS: CodeRelaySettingsModel = {
     enableSoundNotifications: true,
   },
   ai: {
-    defaultProvider: 'anthropic',
-    defaultModel: 'claude-3-7-sonnet',
+    // Empty means "whatever is configured", not a specific vendor's model.
+    // Naming one here made the settings screen display a provider and model the
+    // user may never have set up, and pinned the default to models that age:
+    // anything released later could never become the default without an
+    // extension update.
+    defaultProvider: '',
+    defaultModel: '',
     automaticRouting: true,
     allowFallback: true,
     autoRelayOnFailure: true,

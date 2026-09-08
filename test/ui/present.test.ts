@@ -624,7 +624,19 @@ test('present generates RelayInterruptionModel with progress and verified eviden
     projection,
     live: false,
     blocked: null,
-    selectedModel: { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' },
+    selectedModel: { providerId: 'anthropic', modelId: 'claude-sonnet-4' },
+    // The successor is chosen from what is configured. Previously this was a
+    // hardcoded table that named `gemini-1.5-pro` whether or not the user had
+    // Google set up, and asserted "1M+ context capacity" without consulting a
+    // capability.
+    candidates: [
+      { model: { providerId: 'anthropic', modelId: 'claude-sonnet-4' } },
+      {
+        model: { providerId: 'openai', modelId: 'gpt-5' },
+        capabilities: { streaming: true, toolCalling: true, contextWindow: 400_000 },
+      },
+    ],
+    health: [{ providerId: 'openai', state: 'healthy' }],
   });
 
   assert.ok(model.relayInterruption !== null);
@@ -632,8 +644,13 @@ test('present generates RelayInterruptionModel with progress and verified eviden
   assert.ok(model.relayInterruption?.progressPercent > 0);
   assert.ok(model.relayInterruption?.verifiedFacts.some((f) => f.label.includes('Checkpoint')));
   assert.ok(model.relayInterruption?.verifiedFacts.some((f) => f.label.includes('verified on disk')));
-  assert.equal(model.relayInterruption?.recommendedModel.providerId, 'google');
-  assert.match(model.relayInterruption?.recommendationReason, /1M\+ context capacity/);
+
+  // A different provider, from the configured list.
+  assert.equal(model.relayInterruption?.recommendedModel.providerId, 'openai');
+  assert.equal(model.relayInterruption?.recommendedModel.modelId, 'gpt-5');
+  // Reasons are facts: a measured health state and a declared context window.
+  assert.match(model.relayInterruption?.recommendationReason, /responding normally/);
+  assert.match(model.relayInterruption?.recommendationReason, /400,000 token context/);
   assert.ok(model.relayInterruption?.pipelineSteps.length > 4);
 });
 

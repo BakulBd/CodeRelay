@@ -32,6 +32,8 @@ import { AgentLoop, type LoopEvent, type LoopResult, type TurnPrompt } from '../
 import type { LedgerEntry } from '../../src/continuity/entries.js';
 import { ExecutionLedger } from '../../src/continuity/ledger.js';
 import { HealthTracker, grade } from '../../src/policy/health.js';
+import type { HedgeLimits } from '../../src/policy/hedge.js';
+import type { Timer } from '../../src/agent/race.js';
 import {
   CredentialManager,
   type MetadataStore,
@@ -225,6 +227,10 @@ interface Options {
   /** Lets a test cancel the task the way the user's stop button does. */
   readonly signal?: AbortSignal;
   readonly verifier?: () => Promise<VerificationRun>;
+  /** Opts the loop into racing several endpoints for a turn. */
+  readonly hedge?: HedgeLimits;
+  /** Fires hedge timers by hand, so a race is deterministic. */
+  readonly timer?: Timer;
 }
 
 interface Harness {
@@ -349,6 +355,8 @@ async function harness(opts: Options): Promise<Harness> {
     health,
     ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     ...(opts.verifier === undefined ? {} : { verifier: opts.verifier }),
+    ...(opts.hedge === undefined ? {} : { hedge: opts.hedge }),
+    ...(opts.timer === undefined ? {} : { timer: opts.timer }),
   });
 
   return {
@@ -1124,3 +1132,175 @@ test('when verification fails, the model claiming done is rejected with correcti
   }
 });
 
+
+// --- hedging: racing proposals, committing one -----------------------------
+// The invariant the whole feature rests on is that a losing leg cannot cause a
+// side effect and cannot leave a durable trace. A `STREAMING` entry with no
+// `MODEL_RESPONSE_COMPLETED` is byte-for-byte what an interrupted turn looks
+// like to recovery, so a hedge that wrote one would make the next resume try to
+// reconcile a turn that never happened.
+
+/** A timer whose callbacks only fire when a test says so. */
+function manualTimer(): { timer: Timer; fireAll: () => void; pending: () => number } {
+  const queued: (() => void)[] = [];
+  return {
+    timer: (_ms, fn) => {
+      queued.push(fn);
+      return () => {
+        const i = queued.indexOf(fn);
+        if (i >= 0) {
+          queued.splice(i, 1);
+        }
+      };
+    },
+    fireAll: () => {
+      const due = [...queued];
+      queued.length = 0;
+      for (const fn of due) {
+        fn();
+      }
+    },
+    pending: () => queued.length,
+  };
+}
+
+test('hedging off makes exactly one request, as it always did', async () => {
+  const h = await harness({
+    script: [events(text('done'), done('stop'))],
+    models: [MODEL_A, MODEL_B],
+    keys: [
+      { providerId: MODEL_A.providerId, secret: 'k1' },
+      { providerId: MODEL_B.providerId, secret: 'k2' },
+    ],
+    // No `hedge` option at all: the default must not start spending on a second
+    // provider without being asked.
+  });
+
+  try {
+    const result = await h.loop.run('say something');
+    assert.equal(result.kind, 'DONE');
+    assert.equal(h.requests.length, 1, 'a second request would be money nobody agreed to spend');
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('a prompt primary wins before the hedge is ever started', async () => {
+  const clock = manualTimer();
+  const h = await harness({
+    script: [events(text('fast'), done('stop'))],
+    models: [MODEL_A, MODEL_B],
+    keys: [
+      { providerId: MODEL_A.providerId, secret: 'k1' },
+      { providerId: MODEL_B.providerId, secret: 'k2' },
+    ],
+    hedge: { mode: 'adaptive', maxInFlight: 2, minHedgeDelayMs: 2_000, maxHedgeDelayMs: 20_000, unknownHedgeDelayMs: 8_000 },
+    timer: clock.timer,
+  });
+
+  try {
+    const result = await h.loop.run('say something');
+    assert.equal(result.kind, 'DONE');
+    assert.equal(
+      h.requests.length,
+      1,
+      'the hedge is armed, not fired — it must cost nothing on a turn that goes well',
+    );
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('a failing primary pulls the hedge forward, and the hedge can finish the turn', async () => {
+  const clock = manualTimer();
+  const h = await harness({
+    // The primary 500s; the hedge answers.
+    script: [status(500), events(text('rescued'), done('stop'))],
+    models: [MODEL_A, MODEL_B],
+    keys: [
+      { providerId: MODEL_A.providerId, secret: 'k1' },
+      { providerId: MODEL_B.providerId, secret: 'k2' },
+    ],
+    hedge: { mode: 'adaptive', maxInFlight: 2, minHedgeDelayMs: 2_000, maxHedgeDelayMs: 20_000, unknownHedgeDelayMs: 8_000 },
+    timer: clock.timer,
+  });
+
+  try {
+    const result = await h.loop.run('do the thing');
+    assert.equal(result.kind, 'DONE');
+    assert.equal(h.requests.length, 2, 'the hedge ran');
+
+    // Never silent: a turn finished by another model is recorded as a switch,
+    // through the same entry a failover uses.
+    const entries = await h.entries();
+    const switched = entries.filter((e) => e.type === 'PROVIDER_SWITCHED');
+    assert.equal(switched.length, 1, 'a hedge that wins is a model change and must be recorded');
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('a losing leg leaves no durable trace', async () => {
+  const clock = manualTimer();
+  const h = await harness({
+    script: [status(500), events(text('rescued'), done('stop'))],
+    models: [MODEL_A, MODEL_B],
+    keys: [
+      { providerId: MODEL_A.providerId, secret: 'k1' },
+      { providerId: MODEL_B.providerId, secret: 'k2' },
+    ],
+    hedge: { mode: 'adaptive', maxInFlight: 2, minHedgeDelayMs: 2_000, maxHedgeDelayMs: 20_000, unknownHedgeDelayMs: 8_000 },
+    timer: clock.timer,
+  });
+
+  try {
+    await h.loop.run('do the thing');
+    const entries = await h.entries();
+
+    // Exactly one STREAMING: the primary's. A hedge writing its own would look
+    // to `planRecovery` like a turn that started and never finished.
+    assert.equal(
+      entries.filter((e) => e.type === 'STREAMING').length,
+      1,
+      'only the primary may record that a turn began',
+    );
+  } finally {
+    await h.dispose();
+  }
+});
+
+test('exactly one proposal is ever committed', async () => {
+  // The safety property. Both endpoints are asked; only the winner's tool call
+  // may reach the runner, or the same edit lands twice.
+  const clock = manualTimer();
+  const h = await harness({
+    script: [
+      status(500),
+      events(
+        { t: 'tool_call', id: CALL, name: 'write_file', args: { path: 'out.txt', content: 'x' } },
+        done('tool_use'),
+      ),
+      events(text('finished'), done('stop')),
+    ],
+    models: [MODEL_A, MODEL_B],
+    keys: [
+      { providerId: MODEL_A.providerId, secret: 'k1' },
+      { providerId: MODEL_B.providerId, secret: 'k2' },
+    ],
+    hedge: { mode: 'adaptive', maxInFlight: 2, minHedgeDelayMs: 2_000, maxHedgeDelayMs: 20_000, unknownHedgeDelayMs: 8_000 },
+    timer: clock.timer,
+  });
+
+  try {
+    await h.loop.run('write a file');
+    const entries = await h.entries();
+
+    const executed = entries.filter((e) => e.type === 'TOOL_EXECUTING');
+    assert.equal(executed.length, 1, 'a duplicated write is the failure this design exists to prevent');
+
+    const requested = entries.filter((e) => e.type === 'TOOL_REQUESTED');
+    assert.equal(requested.length, 1, 'only the winning proposal may be dispatched');
+  } finally {
+    await h.dispose();
+  }
+});

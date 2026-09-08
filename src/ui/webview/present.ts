@@ -1009,19 +1009,23 @@ export function describeRelayInterruption(
     remainingSteps.push('Integration & edge case verification', 'Final workspace verification');
   }
 
-  // Successor model recommendation
-  let recommendedModel: ModelRef;
-  let recommendationReason: string;
-  if (/anthropic/i.test(interruptedModel.providerId)) {
-    recommendedModel = { providerId: 'google', modelId: 'gemini-1.5-pro' };
-    recommendationReason = '1M+ context capacity, healthy credential pool, high tool-calling fidelity.';
-  } else if (/google/i.test(interruptedModel.providerId)) {
-    recommendedModel = { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' };
-    recommendationReason = 'Deep architectural reasoning, healthy credential pool, robust coding capability.';
-  } else {
-    recommendedModel = { providerId: 'anthropic', modelId: 'claude-3-7-sonnet' };
-    recommendationReason = 'High reasoning capability and verified failover reliability.';
-  }
+  // Successor model recommendation, derived from what is actually configured.
+  //
+  // This used to be a hardcoded table: Anthropic failed, so recommend
+  // `gemini-1.5-pro`; anything else failed, so recommend `claude-3-7-sonnet`.
+  // Three things were wrong with it. It recommended models the user may never
+  // have configured, so the one-click relay led to a model that could not run.
+  // Its stated reasons — "healthy credential pool", "high tool-calling
+  // fidelity" — were asserted without consulting health or capabilities at all.
+  // And it was stale by construction: a model released tomorrow could never be
+  // recommended, because the table only knows the two names written into it.
+  //
+  // Now it picks from the real candidate list, prefers a *different provider*
+  // (a relay to the provider that just failed is not a relay), and states only
+  // what the candidate actually declares or health actually measured.
+  const recommendation = recommendSuccessor(interruptedModel, options);
+  const recommendedModel = recommendation.model;
+  const recommendationReason = recommendation.reason;
 
   const pipelineSteps = [
     { label: interruptedModel.modelId.replace(/-.*/, '').toUpperCase(), status: 'done' as const },
@@ -1300,5 +1304,98 @@ export function presentWhyModel(selection: Selection): WhyModel {
     spoken: `${selection.model.modelId} was chosen for ${ROLE_LABELS[
       selection.role
     ].toLowerCase()}: ${selection.reasons.join('; ')}.`,
+  };
+}
+
+
+/**
+ * Choose a successor for a relay, from models the user actually has.
+ *
+ * Prefers a different provider, because the common reason to relay is that the
+ * current provider is unavailable — moving to another of its models would hit
+ * the same outage, the same rate-limit bucket and the same rejected key.
+ *
+ * Returns the interrupted model itself when nothing else is configured. That is
+ * the honest answer to "who should take over?" when the answer is "nobody
+ * else", and the panel then offers a retry rather than a switch that cannot
+ * happen.
+ */
+export function recommendSuccessor(
+  interrupted: ModelRef,
+  options: PresentOptions,
+): { readonly model: ModelRef; readonly reason: string } {
+  const candidates = options.candidates ?? [];
+  const health = options.health ?? [];
+
+  const stateOf = (providerId: string): 'healthy' | 'degraded' | 'failing' | null =>
+    health.find((h) => h.providerId === providerId)?.state ?? null;
+
+  const usable = candidates.filter(
+    (c) =>
+      c.model.modelId !== interrupted.modelId || c.model.providerId !== interrupted.providerId,
+  );
+
+  if (usable.length === 0) {
+    return {
+      model: interrupted,
+      reason: 'No other model is configured, so there is nothing to relay to.',
+    };
+  }
+
+  // Rank: a different provider first, then one health has not marked failing,
+  // then the largest declared context. Every term is something observed or
+  // declared — none of it is a claim about how good a model is.
+  const ranked = [...usable].sort((a, b) => {
+    const differentProvider = (c: CandidateModel): number =>
+      c.model.providerId === interrupted.providerId ? 1 : 0;
+    if (differentProvider(a) !== differentProvider(b)) {
+      return differentProvider(a) - differentProvider(b);
+    }
+    const healthRank = (c: CandidateModel): number => {
+      switch (stateOf(c.model.providerId)) {
+        case 'healthy':
+          return 0;
+        case null:
+          return 1;
+        case 'degraded':
+          return 2;
+        case 'failing':
+          return 3;
+      }
+    };
+    if (healthRank(a) !== healthRank(b)) {
+      return healthRank(a) - healthRank(b);
+    }
+    return (b.capabilities?.contextWindow ?? 0) - (a.capabilities?.contextWindow ?? 0);
+  });
+
+  const chosen = ranked[0]!;
+  const reasons: string[] = [];
+
+  if (chosen.model.providerId !== interrupted.providerId) {
+    reasons.push(`a different provider from ${interrupted.providerId}`);
+  }
+  const state = stateOf(chosen.model.providerId);
+  if (state === 'healthy') {
+    reasons.push('responding normally');
+  } else if (state === 'degraded') {
+    reasons.push('chosen despite recent failures — nothing healthier is configured');
+  }
+  const context = chosen.capabilities?.contextWindow;
+  if (typeof context === 'number' && context > 0) {
+    reasons.push(`${context.toLocaleString('en-US')} token context`);
+  }
+  if (chosen.capabilities?.toolCalling === true) {
+    reasons.push('supports tool calling');
+  }
+
+  return {
+    model: chosen.model,
+    // Never empty: a recommendation with no stated basis is the thing this
+    // replaced.
+    reason:
+      reasons.length === 0
+        ? 'The only other model configured for this workspace.'
+        : `${reasons.join(', ')}.`,
   };
 }

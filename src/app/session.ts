@@ -37,6 +37,8 @@ import {
 import { ToolRegistry } from '../tools/tool.js';
 import { FileSystemEffectLog } from '../workspace/probe.js';
 import { FileSystemProbe } from '../workspace/probe.js';
+import type { HedgeLimits } from '../policy/hedge.js';
+import type { EndpointHealth } from '../policy/health.js';
 
 /** A fresh task id. Opaque and collision-free; the ledger filename derives from it. */
 export function newTaskId(): TaskId {
@@ -208,6 +210,19 @@ export interface SessionOptions {
    */
   readonly health?: HealthRecorder | null;
   /**
+   * Race several endpoints for each turn.
+   *
+   * Off unless supplied. Passed straight through, along with the health and
+   * admission hooks the planner needs, so the loop keeps no second opinion
+   * about which endpoints are usable.
+   */
+  readonly hedge?: HedgeLimits;
+  readonly hedgeHealth?: (model: ModelRef, credentialId: string) => EndpointHealth;
+  readonly hedgeAdmit?: (
+    model: ModelRef,
+    credentialId: string,
+  ) => { readonly ok: boolean; readonly probe: boolean };
+  /**
    * Provider-level backoff, in milliseconds, or 0.
    *
    * Consulted every time the loop recomputes candidates, so a provider that
@@ -342,6 +357,9 @@ export async function openSession(options: SessionOptions): Promise<Session> {
       ? {}
       : { health: options.health }),
     ...(options.random === undefined ? {} : { random: options.random }),
+    ...(options.hedge === undefined ? {} : { hedge: options.hedge }),
+    ...(options.hedgeHealth === undefined ? {} : { hedgeHealth: options.hedgeHealth }),
+    ...(options.hedgeAdmit === undefined ? {} : { hedgeAdmit: options.hedgeAdmit }),
     now,
   };
 

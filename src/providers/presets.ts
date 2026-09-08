@@ -69,7 +69,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     auth: 'bearer',
     category: 'cloud',
     keyPlaceholder: 'sk-ant-api03-...',
-    detail: 'Claude 3.7 & 3.5 models via Anthropic Messages API',
+    detail: 'Claude models via the Anthropic Messages API',
     modelsUrl: 'https://docs.anthropic.com/en/docs/about-claude/models',
     popularModels: [
       'claude-3-7-sonnet-20250219',
@@ -89,7 +89,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     keyPlaceholder: 'sk-proj-...',
     // Newer OpenAI models reject `max_tokens` outright.
     maxTokensField: 'max_completion_tokens',
-    detail: 'GPT-4o, o3-mini, o1 & GPT models via Chat Completions',
+    detail: 'GPT and o-series models via Chat Completions',
     modelsUrl: 'https://platform.openai.com/docs/models',
     popularModels: [
       'gpt-4o',
@@ -108,7 +108,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     auth: 'bearer',
     category: 'cloud',
     keyPlaceholder: 'AIzaSy...',
-    detail: 'Gemini 2.0 Flash, Pro & 1.5 models via generateContent',
+    detail: 'Gemini models via generateContent',
     modelsUrl: 'https://ai.google.dev/gemini-api/docs/models',
     popularModels: [
       'gemini-2.0-flash',
@@ -127,7 +127,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     category: 'cloud',
     keyPlaceholder: 'nvapi-...',
     maxTokensField: 'max_tokens',
-    detail: 'Llama 3.3, DeepSeek-R1 & NVIDIA hosted models',
+    detail: 'Open models hosted on NVIDIA NIM',
     modelsUrl: 'https://build.nvidia.com/models',
     popularModels: [
       'meta/llama-3.3-70b-instruct',
@@ -146,7 +146,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     category: 'gateway',
     keyPlaceholder: 'sk-or-v1-...',
     maxTokensField: 'max_tokens',
-    detail: 'Unified gateway for Claude, GPT, Llama, DeepSeek & 200+ models',
+    detail: 'Unified gateway to many vendors through one key',
     modelsUrl: 'https://openrouter.ai/models',
     popularModels: [
       'anthropic/claude-3.7-sonnet',
@@ -211,7 +211,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     category: 'cloud',
     keyPlaceholder: 'sk-...',
     maxTokensField: 'max_tokens',
-    detail: 'DeepSeek-V3 & DeepSeek-R1 reasoning models',
+    detail: 'DeepSeek chat and reasoning models',
     modelsUrl: 'https://platform.deepseek.com/api-docs',
     popularModels: ['deepseek-chat', 'deepseek-reasoner'],
   },
@@ -225,7 +225,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     category: 'cloud',
     keyPlaceholder: 'gsk_...',
     maxTokensField: 'max_tokens',
-    detail: 'Ultra-fast LPU inference for Llama 3.3 & DeepSeek-R1',
+    detail: 'Low-latency LPU inference for open models',
     modelsUrl: 'https://console.groq.com/docs/models',
     popularModels: ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'mixtral-8x7b-32768'],
   },
@@ -239,7 +239,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     category: 'cloud',
     keyPlaceholder: '...',
     maxTokensField: 'max_tokens',
-    detail: 'Mistral Large 2, Codestral & Pixtral models',
+    detail: 'Mistral chat, code and vision models',
     modelsUrl: 'https://docs.mistral.ai/getting-started/models/',
     popularModels: ['codestral-latest', 'mistral-large-latest', 'mistral-small-latest'],
   },

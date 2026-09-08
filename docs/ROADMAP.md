@@ -10,7 +10,7 @@ the real engine and pinned by a test.
 | `[~]` | Partially built — what is missing is named |
 | `[ ]` | Not started |
 
-**Last updated: 2026-09-07 · 1019 tests passing · VSIX 369 KB / 106 files / 0 runtime deps**
+**Last updated: 2026-09-09 · 1041 tests passing · VSIX 374 KB / 106 files / 0 runtime deps**
 
 **All 37 phases complete**, plus the Benchmark Lab. One capability is built and
 tested but not yet driving live traffic — named at the bottom, with the reason
@@ -26,7 +26,7 @@ Verified mechanically each time, not asserted:
 | Check | Result |
 |---|---|
 | `tsc --noEmit` | clean |
-| `node --test` | 1019 passing, 0 failing |
+| `node --test` | 1041 passing, 0 failing |
 | Extension activates (stubbed host) | 44 subscriptions |
 | Webview client boots and posts `ready` | yes — pinned by `test/webview/boot.test.ts` |
 | Elements the client looks up | 209, all declared by the shell |
@@ -143,6 +143,43 @@ deleted, so the coverage moved instead of vanishing.
    as they are taken — which also gives the recovery manifest real state to
    build from. They are recorded `verified: false`, because a snapshot of the
    work tree has not had the project's checks run against it.
+
+### Models released tomorrow
+
+The architecture was already future-proof — no model-id gating anywhere,
+discovery reads the provider's own `/models`, and `popularModels` are labelled
+suggestions rather than a permitted list. **15 providers are served by 3 wire
+formats**, so adding a provider is a preset and adding a model is a settings
+line.
+
+The *UI* was not. Four places hardcoded specific models, and all of them aged
+badly:
+
+1. **The relay recommendation was a two-row table.** Anthropic failed → suggest
+   `gemini-1.5-pro`; anything else → `claude-3-7-sonnet`. It recommended models
+   the user may never have configured, so the one-click relay could lead to a
+   model that cannot run. Its stated reasons — "healthy credential pool", "high
+   tool-calling fidelity" — were asserted without consulting health or
+   capabilities at all. And a model released after the table was written could
+   never be recommended. Replaced by `recommendSuccessor`, which ranks the real
+   candidate list, prefers a *different provider* (relaying inside an outage is
+   not a relay), and states only measured health and declared capability.
+2. **`settings.ts` defaulted to `anthropic` / `claude-3-7-sonnet`**, so the
+   settings screen displayed a provider and model the user might never have set
+   up. Now empty, meaning "whatever is configured".
+3. **The chaos dry run narrated a relay between two hardcoded models.** Now uses
+   real configured ones, and falls back to a named `(no model configured)`
+   placeholder rather than appearing to reference a vendor model.
+4. **Eight preset descriptions named a model generation** — "Claude 3.7 & 3.5",
+   "GPT-4o, o3-mini, o1". Copy nobody remembers to update, and a card reading
+   that the year after the next generation ships looks abandoned. They now
+   describe the endpoint.
+
+`test/providers/future-models.test.ts` locks the property: a catalog accepts an
+id nothing has heard of, every preset resolves to an adapter with such an id, no
+source file gates behaviour on a model name, and preset copy names no
+generation. `test/ui/successor.test.ts` covers the recommendation, including
+that it never claims health it did not consult.
 
 ### The credential path, end to end
 
@@ -405,29 +442,32 @@ breaking.
 
 ---
 
-## The one incomplete item
+## Hedging: wired
 
-**Hedging is not driving live traffic.** `policy/hedge.ts` (19 tests) and
-`agent/race.ts` (13 tests) are complete, and `policy/health.ts` feeds them, but
-`AgentLoop.attemptTurn` still runs one leg.
+`policy/hedge.ts` and `agent/race.ts` now drive live traffic, behind
+`coderelay.hedging` — `off` by default, because the feature spends the user's
+money and a default that does so silently would be indefensible.
 
-This was left deliberately rather than rushed. `attemptTurn` is 220 lines that
-sit directly on the exactly-once side-effect guarantee, and driving several legs
-through it means deciding how concurrent `STREAMING` and `STREAM_PROGRESS`
-entries interleave in a ledger the timeline projects and recovery replays. Done
-carelessly it would corrupt the one property the whole product rests on.
+The invariant, and what enforces it:
 
-The design is settled and the invariant is written at the top of `hedge.ts`:
-**race proposals, commit one.** The remaining work is:
+| Rule | Enforced by |
+|---|---|
+| Race **proposals**, never effects | `runLeg` produces text and tool-call *requests*; only the winner reaches `dispatch` and the one `ToolRunner` |
+| Only the primary writes to the ledger | A `STREAMING` with no `MODEL_RESPONSE_COMPLETED` is byte-for-byte an *interrupted turn* to `planRecovery`, so a losing hedge would make the next resume reconcile a turn that never happened |
+| A leg wins only on a turn that completed | A truncated stream is a failure the racer continues past — which is what lets a hedge rescue a primary that died mid-turn |
+| A hedge that wins is never silent | Recorded as `PROVIDER_SWITCHED`, the same entry a failover writes, so the timeline reads identically either way |
+| An aborted leg returns its breaker probe slot | `onAbandoned` → `releaseProbeSlot`; otherwise a healthy endpoint stays ejected forever |
 
-1. Extract the streaming half of `attemptTurn` into a leg runner parameterised
-   by `(model, credentialId)`, producing a proposal and touching no ledger entry
-   except its own `STREAMING`.
-2. Let only the primary leg write `STREAM_PROGRESS`; a winning hedge writes its
-   text once at `MODEL_RESPONSE_COMPLETED`.
-3. Dispatch the winner through the existing single `ToolRunner`, unchanged.
-4. Release the breaker's probe slot for every aborted leg, via
-   `HealthTracker.releaseProbeSlot` — `race.ts` already reports them.
+Five tests in `test/agent/loop.test.ts` cover it, including the one that
+matters: with both endpoints asked and the primary failing, the ledger holds
+**exactly one `TOOL_REQUESTED` and one `TOOL_EXECUTING`**. A duplicated write is
+the failure the whole design exists to prevent, and that assertion is what says
+it does.
 
-`realTimer` in `agent/race.ts` is the only dead export in the codebase, and it
-is dead for exactly this reason.
+The earlier caution was warranted and is worth recording: a previous attempt at
+this edit silently deleted the evidence gate, and only a test caught it. This
+time the change was made in five verified steps against a saved baseline rather
+than as one large rewrite.
+
+**Every module in `src/` is now imported by something that runs.**
+

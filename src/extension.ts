@@ -22,7 +22,8 @@ import * as vscode from 'vscode';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { HealthTracker } from './policy/health.js';
+import { HealthTracker, type EndpointHealth } from './policy/health.js';
+import { DEFAULT_HEDGE_LIMITS, type HedgeLimits } from './policy/hedge.js';
 import { FAULT_LABELS, SCENARIOS, injectFaults } from './bench/faults.js';
 import { applyMode, behaviourFor } from './plan/modes.js';
 import { ROLE_LABELS, TASK_ROLES, selectModel, type Selection } from './policy/select.js';
@@ -147,6 +148,46 @@ let ui: Ui | null = null;
  * keeping it wrongly costs a working provider.
  */
 const health = new HealthTracker({ now: () => Date.now() });
+
+/**
+ * The hedging options for a session, or nothing when it is off.
+ *
+ * Returns an empty object rather than `{ hedge: undefined }` so the session and
+ * the loop both take their untouched single-leg path — the default has to be
+ * indistinguishable from the feature not existing, because it spends the user's
+ * money when it is on.
+ */
+function readHedging(config: vscode.WorkspaceConfiguration): {
+  hedge?: HedgeLimits;
+  hedgeHealth?: (model: ModelRef, credentialId: string) => EndpointHealth;
+  hedgeAdmit?: (
+    model: ModelRef,
+    credentialId: string,
+  ) => { readonly ok: boolean; readonly probe: boolean };
+} {
+  const mode = config.get<string>('hedging') ?? 'off';
+  if (mode !== 'adaptive' && mode !== 'race') {
+    return {};
+  }
+  return {
+    hedge: { ...DEFAULT_HEDGE_LIMITS, mode },
+    hedgeHealth: (model, credentialId) => health.get({ model, credentialId }),
+    // `admit` mutates: it claims the breaker's half-open probe slot, which is
+    // what makes "exactly one probe" true when two legs ask in the same tick.
+    hedgeAdmit: (model, credentialId) => {
+      const admission = health.admit({ model, credentialId });
+      return { ok: admission.ok, probe: admission.ok ? admission.probe : false };
+    },
+  };
+}
+
+/**
+ * Stands in when no model is configured at all.
+ *
+ * Named rather than invented so a dry run cannot appear to reference a real
+ * vendor model the user does not have.
+ */
+const UNCONFIGURED_MODEL: ModelRef = { providerId: 'none', modelId: '(no model configured)' };
 
 /**
  * The most recent verification run, and whether one is in flight.
@@ -814,6 +855,10 @@ async function runTask(
           // the previous task is already known to be failing when this one
           // starts, instead of being offered again as a fresh candidate.
           health,
+          // Off unless the user asked for it. When on, the planner is given the
+          // same health and admission the router uses, so it cannot form a
+          // second opinion about which endpoints are usable.
+          ...readHedging(config),
           providerCooldownMs: (providerId) => rateLimiter.getRemainingWaitMs(providerId),
           // Real jitter in production. Retries that land on the same tick turn a
           // rate limit into a lockout; the "single user, so no herd" argument
@@ -1621,7 +1666,7 @@ async function handleViewMessage(
       return;
 
     case 'injectChaos':
-      void executeChaosInjection(message.failureType, message.targetStep);
+      void executeChaosInjection(context, message.failureType, message.targetStep);
       return;
 
     case 'exportTaskGraph':
@@ -3595,7 +3640,11 @@ async function measureParadigm(options: {
 }
 
 
-async function executeChaosInjection(failureType: string, targetStep?: number): Promise<void> {
+async function executeChaosInjection(
+  context: vscode.ExtensionContext,
+  failureType: string,
+  targetStep?: number,
+): Promise<void> {
   const harness = new ChaosInjectionHarness({
     failureType: failureType as ChaosFailureType,
     triggerOnStep: targetStep ?? 3,
@@ -3604,8 +3653,24 @@ async function executeChaosInjection(failureType: string, targetStep?: number): 
   if (!activeTaskGraph) {
     activeTaskGraph = new TaskStateGraph(ui?.store.selected ?? 'active');
   }
-  const primaryWorker: ModelRef = { providerId: 'anthropic', modelId: 'claude-3-5-sonnet' };
-  const fallbackWorker: ModelRef = { providerId: 'deepseek', modelId: 'deepseek-chat' };
+  // Real configured models, not two names written into the source. A dry run
+  // that narrates a relay between models the user does not have teaches them
+  // nothing about their own setup.
+  const catalog = readCatalog();
+  const pool =
+    catalog === null
+      ? []
+      : buildCandidates(catalog, credentialManager(context), Date.now()).map((c) => c.model);
+  const primaryWorker: ModelRef =
+    ui?.store.selected !== null && ui !== null
+      ? (ui.store.project(ui.store.selected).header.model ?? pool[0] ?? UNCONFIGURED_MODEL)
+      : (pool[0] ?? UNCONFIGURED_MODEL);
+  // A relay is to a *different* provider where one exists; falling back to the
+  // same one would demonstrate the opposite of the point.
+  const fallbackWorker: ModelRef =
+    pool.find((m) => m.providerId !== primaryWorker.providerId) ??
+    pool.find((m) => m.modelId !== primaryWorker.modelId) ??
+    UNCONFIGURED_MODEL;
   activeChaosReport = harness.runSimulation({
     graph: activeTaskGraph,
     primaryWorker,

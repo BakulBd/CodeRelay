@@ -734,6 +734,21 @@
               }
             }
           }
+        },
+        "coderelay.hedging": {
+          "type": "string",
+          "enum": [
+            "off",
+            "adaptive",
+            "race"
+          ],
+          "default": "off",
+          "enumDescriptions": [
+            "One request at a time. The default.",
+            "Send one request, and arm a backup that fires only if the first goes slow. Costs almost nothing on turns that go well.",
+            "Send every permitted endpoint at once. Fastest, and pays for every request."
+          ],
+          "markdownDescription": "Run more than one provider at once for each turn, and keep the first usable answer.\n\nCodeRelay races **proposals**, never effects: whichever model answers first has its tool calls executed, and every other request is cancelled before anything is written. A losing request can cost input tokens; it cannot cause a duplicated edit.\n\n`adaptive` arms a backup at the primary's own observed response time, so it usually never fires. `race` sends everything immediately and multiplies token spend by the number of endpoints."
         }
       }
     }
